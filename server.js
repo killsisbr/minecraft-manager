@@ -32,6 +32,7 @@ const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);
 const unlink = promisify(fs.unlink);
 const mkdir = promisify(fs.mkdir);
+const rename = promisify(fs.rename);
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -350,6 +351,105 @@ app.post('/api/extract/:filename', isAuthenticated, async (req, res) => {
   } catch (error) {
     console.error('Error extracting ZIP file:', error);
     res.status(500).json({ error: 'Failed to extract ZIP file' });
+  }
+});
+
+// Move a file or directory
+app.post('/api/move', isAuthenticated, async (req, res) => {
+  try {
+    const { filename, destinationPath } = req.body;
+    const relativePath = req.body.currentPath || '';
+    
+    const serverDir = path.join(__dirname, 'minecraft-server');
+    const sourceDir = path.join(serverDir, relativePath);
+    const destDir = path.join(serverDir, destinationPath);
+    const sourceFilePath = path.join(sourceDir, filename);
+    const destFilePath = path.join(destDir, filename);
+    
+    // Security check: ensure paths are within the server directory
+    if (!sourceFilePath.startsWith(serverDir) || !destFilePath.startsWith(serverDir)) {
+      return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if source file exists
+    if (!fs.existsSync(sourceFilePath)) {
+      return res.status(404).json({ error: 'Source file not found' });
+    }
+    
+    // Check if destination directory exists
+    if (!fs.existsSync(destDir)) {
+      return res.status(404).json({ error: 'Destination directory not found' });
+    }
+    
+    // Check if destination file already exists
+    if (fs.existsSync(destFilePath)) {
+      return res.status(400).json({ error: 'File already exists in destination' });
+    }
+    
+    // Move file
+    await rename(sourceFilePath, destFilePath);
+    res.json({ message: 'File moved successfully' });
+  } catch (error) {
+    console.error('Error moving file:', error);
+    res.status(500).json({ error: 'Failed to move file' });
+  }
+});
+
+// Move multiple files
+app.post('/api/move-multiple', isAuthenticated, async (req, res) => {
+  try {
+    const { filenames, destinationPath } = req.body;
+    const relativePath = req.body.currentPath || '';
+    
+    const serverDir = path.join(__dirname, 'minecraft-server');
+    const sourceDir = path.join(serverDir, relativePath);
+    const destDir = path.join(serverDir, destinationPath);
+    
+    // Security check: ensure paths are within the server directory
+    if (!sourceDir.startsWith(serverDir) || !destDir.startsWith(serverDir)) {
+      return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if destination directory exists
+    if (!fs.existsSync(destDir)) {
+      return res.status(404).json({ error: 'Destination directory not found' });
+    }
+    
+    // Move each file
+    const results = [];
+    for (const filename of filenames) {
+      try {
+        const sourceFilePath = path.join(sourceDir, filename);
+        const destFilePath = path.join(destDir, filename);
+        
+        // Check if source file exists
+        if (!fs.existsSync(sourceFilePath)) {
+          results.push({ filename, status: 'error', message: 'Source file not found' });
+          continue;
+        }
+        
+        // Check if destination file already exists
+        if (fs.existsSync(destFilePath)) {
+          results.push({ filename, status: 'error', message: 'File already exists in destination' });
+          continue;
+        }
+        
+        // Move file
+        await rename(sourceFilePath, destFilePath);
+        results.push({ filename, status: 'success', message: 'File moved successfully' });
+      } catch (error) {
+        console.error(`Error moving file ${filename}:`, error);
+        results.push({ filename, status: 'error', message: 'Failed to move file' });
+      }
+    }
+    
+    res.json({ 
+      message: 'Files move operation completed',
+      results
+    });
+  } catch (error) {
+    console.error('Error moving files:', error);
+    res.status(500).json({ error: 'Failed to move files' });
   }
 });
 

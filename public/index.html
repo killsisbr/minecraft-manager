@@ -43,6 +43,7 @@
             gap: 1rem;
             margin-bottom: 1rem;
             flex-wrap: wrap;
+            align-items: center;
         }
         button {
             padding: 0.5rem 1rem;
@@ -75,6 +76,12 @@
         }
         .console-btn:hover {
             background-color: #1976D2;
+        }
+        .move-btn {
+            background-color: #9C27B0;
+        }
+        .move-btn:hover {
+            background-color: #7B1FA2;
         }
         .file-list {
             width: 100%;
@@ -219,6 +226,43 @@
         .extract-btn:hover {
             background-color: #7B1FA2;
         }
+        .select-all-checkbox {
+            margin-right: 10px;
+        }
+        .file-checkbox {
+            margin-right: 10px;
+        }
+        .move-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            z-index: 1001;
+            width: 80%;
+            max-width: 500px;
+        }
+        .move-dialog input, .move-dialog select {
+            width: 100%;
+            padding: 8px;
+            margin: 10px 0;
+            box-sizing: border-box;
+        }
+        .move-dialog button {
+            margin-right: 10px;
+        }
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
@@ -263,6 +307,10 @@
                 <button id="refreshBtn">Atualizar</button>
                 <button id="newFolderBtn">Nova Pasta</button>
                 <button id="uploadBtn">Importar Arquivo</button>
+                <button id="moveSelectedBtn" class="move-btn" style="display: none;">Mover Selecionados</button>
+                <input type="text" id="destinationPath" placeholder="Caminho de destino" style="display: none; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                <button id="confirmMoveBtn" class="move-btn" style="display: none;">Confirmar</button>
+                <button id="cancelMoveBtn" style="display: none;">Cancelar</button>
             </div>
             
             <div id="message"></div>
@@ -270,6 +318,7 @@
             <table class="file-list">
                 <thead>
                     <tr>
+                        <th><input type="checkbox" id="selectAllCheckbox" class="select-all-checkbox"></th>
                         <th>Nome</th>
                         <th>Tipo</th>
                         <th>Tamanho</th>
@@ -335,6 +384,20 @@
         </div>
     </div>
 
+    <!-- Move Dialog -->
+    <div id="moveDialog" class="move-dialog" style="display: none;">
+        <h3>Mover Arquivo</h3>
+        <p>Selecione o destino para <span id="moveFileName"></span>:</p>
+        <select id="destinationSelect">
+            <!-- Options will be populated here -->
+        </select>
+        <div style="margin-top: 20px;">
+            <button id="confirmMoveDialogBtn" class="move-btn">Mover</button>
+            <button id="cancelMoveDialogBtn">Cancelar</button>
+        </div>
+    </div>
+    <div id="moveDialogOverlay" class="overlay" style="display: none;"></div>
+
     <script>
         // Current file being edited
         let currentFile = null;
@@ -344,6 +407,10 @@
         let consoleInterval = null;
         // Track if console modal is open
         let isConsoleOpen = false;
+        // Track selected files for moving
+        let selectedFiles = [];
+        // Track file being moved
+        let fileToMove = null;
         
         // File management functionality
         document.addEventListener('DOMContentLoaded', function() {
@@ -357,6 +424,15 @@
             document.getElementById('uploadBtn').addEventListener('click', toggleUploadForm);
             document.getElementById('cancelUploadBtn').addEventListener('click', toggleUploadForm);
             document.getElementById('fileUploadForm').addEventListener('submit', handleFileUpload);
+            document.getElementById('selectAllCheckbox').addEventListener('change', toggleSelectAll);
+            document.getElementById('moveSelectedBtn').addEventListener('click', showMoveDestinationInput);
+            document.getElementById('confirmMoveBtn').addEventListener('click', moveSelectedFiles);
+            document.getElementById('cancelMoveBtn').addEventListener('click', cancelMoveOperation);
+            
+            // Event listeners for move dialog
+            document.getElementById('confirmMoveDialogBtn').addEventListener('click', moveFileFromDialog);
+            document.getElementById('cancelMoveDialogBtn').addEventListener('click', closeMoveDialog);
+            document.getElementById('moveDialogOverlay').addEventListener('click', closeMoveDialog);
             
             // Event listeners for server management
             document.getElementById('startServerBtn').addEventListener('click', startServer);
@@ -472,7 +548,7 @@
                     fileList.innerHTML = '';
                     
                     if (data.files.length === 0) {
-                        fileList.innerHTML = '<tr><td colspan="5">Nenhum arquivo encontrado</td></tr>';
+                        fileList.innerHTML = '<tr><td colspan="6">Nenhum arquivo encontrado</td></tr>';
                         return;
                     }
                     
@@ -480,6 +556,7 @@
                         const row = document.createElement('tr');
                         if (file.type === 'Pasta') {
                             row.innerHTML = `
+                                <td><input type="checkbox" class="file-checkbox" data-filename="${file.name}"></td>
                                 <td><a href="#" onclick="enterDirectory('${file.name}')">${file.name}</a></td>
                                 <td>${file.type}</td>
                                 <td>${file.size}</td>
@@ -493,6 +570,7 @@
                             // Check if file is a ZIP file
                             const isZip = file.name.toLowerCase().endsWith('.zip');
                             row.innerHTML = `
+                                <td><input type="checkbox" class="file-checkbox" data-filename="${file.name}"></td>
                                 <td>${file.name}</td>
                                 <td>${file.type}</td>
                                 <td>${file.size}</td>
@@ -501,11 +579,17 @@
                                     <button onclick="editFile('${file.name}')">Editar</button>
                                     <button onclick="downloadFile('${file.name}')" style="background-color: #2196F3;">Baixar</button>
                                     ${isZip ? `<button onclick="extractZip('${file.name}')" class="extract-btn">Extrair</button>` : ''}
+                                    <button onclick="showMoveDialog('${file.name}')" class="move-btn">Mover</button>
                                     <button onclick="deleteFile('${file.name}')" style="background-color: #f44336;">Apagar</button>
                                 </td>
                             `;
                         }
                         fileList.appendChild(row);
+                    });
+                    
+                    // Add event listeners to checkboxes
+                    document.querySelectorAll('.file-checkbox').forEach(checkbox => {
+                        checkbox.addEventListener('change', updateMoveButtonVisibility);
                     });
                 })
                 .catch(error => {
@@ -797,6 +881,194 @@
             // Send request
             xhr.open('POST', '/api/upload');
             xhr.send(formData);
+        }
+        
+        // File selection functions
+        function toggleSelectAll() {
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            const fileCheckboxes = document.querySelectorAll('.file-checkbox');
+            
+            fileCheckboxes.forEach(checkbox => {
+                checkbox.checked = selectAllCheckbox.checked;
+            });
+            
+            updateMoveButtonVisibility();
+        }
+        
+        function updateMoveButtonVisibility() {
+            const selectedCheckboxes = document.querySelectorAll('.file-checkbox:checked');
+            const moveSelectedBtn = document.getElementById('moveSelectedBtn');
+            
+            if (selectedCheckboxes.length > 0) {
+                moveSelectedBtn.style.display = 'inline-block';
+            } else {
+                moveSelectedBtn.style.display = 'none';
+                hideMoveDestinationInput();
+            }
+        }
+        
+        function showMoveDestinationInput() {
+            document.getElementById('destinationPath').style.display = 'inline-block';
+            document.getElementById('confirmMoveBtn').style.display = 'inline-block';
+            document.getElementById('cancelMoveBtn').style.display = 'inline-block';
+            document.getElementById('destinationPath').value = currentPath || '';
+            document.getElementById('destinationPath').focus();
+        }
+        
+        function hideMoveDestinationInput() {
+            document.getElementById('destinationPath').style.display = 'none';
+            document.getElementById('confirmMoveBtn').style.display = 'none';
+            document.getElementById('cancelMoveBtn').style.display = 'none';
+        }
+        
+        function cancelMoveOperation() {
+            hideMoveDestinationInput();
+            document.getElementById('selectAllCheckbox').checked = false;
+            document.querySelectorAll('.file-checkbox').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            updateMoveButtonVisibility();
+        }
+        
+        function moveSelectedFiles() {
+            const destinationPath = document.getElementById('destinationPath').value;
+            if (!destinationPath) {
+                showMessage('Por favor, informe o caminho de destino.', false);
+                return;
+            }
+            
+            const selectedCheckboxes = document.querySelectorAll('.file-checkbox:checked');
+            const filenames = Array.from(selectedCheckboxes).map(checkbox => checkbox.dataset.filename);
+            
+            if (filenames.length === 0) {
+                showMessage('Nenhum arquivo selecionado.', false);
+                return;
+            }
+            
+            fetch('/api/move-multiple', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    filenames: filenames,
+                    destinationPath: destinationPath,
+                    currentPath: currentPath
+                })
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.results) {
+                    // Check if any files failed to move
+                    const failedMoves = data.results.filter(result => result.status === 'error');
+                    if (failedMoves.length > 0) {
+                        const failedFiles = failedMoves.map(f => f.filename).join(', ');
+                        showMessage(`Alguns arquivos não foram movidos: ${failedFiles}`, false);
+                    } else {
+                        showMessage('Arquivos movidos com sucesso!');
+                    }
+                } else {
+                    showMessage(data.message || 'Arquivos movidos com sucesso!');
+                }
+                
+                // Clear selection and hide move controls
+                cancelMoveOperation();
+                loadFileList(); // Refresh file list
+            })
+            .catch(error => {
+                console.error('Error moving files:', error);
+                if (error instanceof SyntaxError) {
+                    window.location.href = '/login';
+                } else {
+                    showMessage('Erro ao mover arquivos', false);
+                }
+            });
+        }
+        
+        // Move file dialog functions
+        function showMoveDialog(filename) {
+            fileToMove = filename;
+            document.getElementById('moveFileName').textContent = filename;
+            
+            // Populate destination select with parent directories
+            const destinationSelect = document.getElementById('destinationSelect');
+            destinationSelect.innerHTML = '';
+            
+            // Add current directory (as parent)
+            if (currentPath) {
+                const parentPath = currentPath.split('/').slice(0, -1).join('/');
+                const option = document.createElement('option');
+                option.value = parentPath || '';
+                option.textContent = parentPath || 'Raiz';
+                destinationSelect.appendChild(option);
+            } else {
+                // If we're in root, show some common directories
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Raiz';
+                option.selected = true;
+                destinationSelect.appendChild(option);
+            }
+            
+            // Add plugins directory if it exists
+            const pluginsOption = document.createElement('option');
+            pluginsOption.value = 'plugins';
+            pluginsOption.textContent = 'plugins';
+            destinationSelect.appendChild(pluginsOption);
+            
+            // Show dialog
+            document.getElementById('moveDialog').style.display = 'block';
+            document.getElementById('moveDialogOverlay').style.display = 'block';
+        }
+        
+        function closeMoveDialog() {
+            document.getElementById('moveDialog').style.display = 'none';
+            document.getElementById('moveDialogOverlay').style.display = 'none';
+            fileToMove = null;
+        }
+        
+        function moveFileFromDialog() {
+            if (!fileToMove) return;
+            
+            const destinationPath = document.getElementById('destinationSelect').value;
+            
+            fetch('/api/move', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    filename: fileToMove,
+                    destinationPath: destinationPath,
+                    currentPath: currentPath
+                })
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                return response.json();
+            })
+            .then(data => {
+                closeMoveDialog();
+                showMessage(data.message || 'Arquivo movido com sucesso!');
+                loadFileList(); // Refresh file list
+            })
+            .catch(error => {
+                console.error('Error moving file:', error);
+                if (error instanceof SyntaxError) {
+                    window.location.href = '/login';
+                } else {
+                    showMessage('Erro ao mover arquivo', false);
+                }
+            });
         }
         
         // Server management functions
