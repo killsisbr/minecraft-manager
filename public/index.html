@@ -24,14 +24,14 @@
             margin: 2rem auto;
             padding: 0 1rem;
         }
-        .file-manager {
+        .server-manager {
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             padding: 1rem;
             margin-bottom: 2rem;
         }
-        .server-manager {
+        .file-manager {
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
@@ -82,6 +82,24 @@
         }
         .move-btn:hover {
             background-color: #7B1FA2;
+        }
+        .copy-btn {
+            background-color: #2196F3;
+        }
+        .copy-btn:hover {
+            background-color: #1976D2;
+        }
+        .paste-btn {
+            background-color: #FF9800;
+        }
+        .paste-btn:hover {
+            background-color: #F57C00;
+        }
+        .rename-btn {
+            background-color: #009688;
+        }
+        .rename-btn:hover {
+            background-color: #00796B;
         }
         .file-list {
             width: 100%;
@@ -263,6 +281,52 @@
             background: rgba(0,0,0,0.5);
             z-index: 1000;
         }
+        .server-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .server-card {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 1rem;
+            width: 200px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .server-card:hover {
+            background-color: #e9e9e9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .server-card.selected {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .server-card h3 {
+            margin-top: 0;
+        }
+        .create-server-form {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+        .rename-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            z-index: 1001;
+            width: 80%;
+            max-width: 500px;
+        }
     </style>
 </head>
 <body>
@@ -275,9 +339,29 @@
     </header>
 
     <div class="container">
-        <!-- Server Manager Section -->
+        <!-- Server Selection Section -->
         <div class="server-manager">
-            <h2>Gerenciador do Servidor</h2>
+            <h2>Servidores</h2>
+            
+            <div class="server-list" id="serverList">
+                <!-- Server cards will be populated here -->
+            </div>
+            
+            <button id="createServerBtn">Criar Novo Servidor</button>
+            
+            <div class="create-server-form" id="createServerForm" style="display: none;">
+                <h3>Criar Novo Servidor</h3>
+                <input type="text" id="serverNameInput" placeholder="Nome do servidor" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; margin-right: 0.5rem;">
+                <button id="confirmCreateServerBtn">Criar</button>
+                <button id="cancelCreateServerBtn">Cancelar</button>
+            </div>
+            
+            <div id="serverMessage"></div>
+        </div>
+        
+        <!-- Selected Server Section -->
+        <div class="server-manager" id="selectedServerSection" style="display: none;">
+            <h2 id="selectedServerName">Servidor</h2>
             
             <div>
                 Status: 
@@ -292,11 +376,12 @@
                 <button id="restartServerBtn" class="restart-btn">Reiniciar Servidor</button>
                 <button id="refreshStatusBtn">Atualizar Status</button>
                 <button id="consoleBtn" class="console-btn">Abrir Console</button>
+                <button id="deleteServerBtn" class="stop-btn">Excluir Servidor</button>
             </div>
         </div>
         
         <!-- File Manager Section -->
-        <div class="file-manager">
+        <div class="file-manager" id="fileManagerSection" style="display: none;">
             <h2>Gerenciador de Arquivos</h2>
             
             <div class="breadcrumb" id="breadcrumb">
@@ -307,10 +392,12 @@
                 <button id="refreshBtn">Atualizar</button>
                 <button id="newFolderBtn">Nova Pasta</button>
                 <button id="uploadBtn">Importar Arquivo</button>
-                <button id="moveSelectedBtn" class="move-btn" style="display: none;">Mover Selecionados</button>
+                <button id="copyBtn" class="copy-btn" style="display: none;">Copiar</button>
+                <button id="pasteBtn" class="paste-btn" style="display: none;">Colar</button>
+                <button id="moveSelectedBtn" class="move-btn" style="display: none;">Mover</button>
                 <input type="text" id="destinationPath" placeholder="Caminho de destino" style="display: none; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
-                <button id="confirmMoveBtn" class="move-btn" style="display: none;">Confirmar</button>
-                <button id="cancelMoveBtn" style="display: none;">Cancelar</button>
+                <button id="confirmOperationBtn" class="move-btn" style="display: none;">Confirmar</button>
+                <button id="cancelOperationBtn" style="display: none;">Cancelar</button>
             </div>
             
             <div id="message"></div>
@@ -349,7 +436,7 @@
     <div id="consoleModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Console do Servidor</h2>
+                <h2>Console do Servidor <span id="consoleServerName"></span></h2>
                 <span class="close">&times;</span>
             </div>
             <div>
@@ -384,39 +471,60 @@
         </div>
     </div>
 
-    <!-- Move Dialog -->
-    <div id="moveDialog" class="move-dialog" style="display: none;">
-        <h3>Mover Arquivo</h3>
-        <p>Selecione o destino para <span id="moveFileName"></span>:</p>
+    <!-- Move/Copy Dialog -->
+    <div id="operationDialog" class="move-dialog" style="display: none;">
+        <h3 id="operationDialogTitle">Operação</h3>
+        <p>Selecione o destino para <span id="operationFileName"></span>:</p>
         <select id="destinationSelect">
             <!-- Options will be populated here -->
         </select>
         <div style="margin-top: 20px;">
-            <button id="confirmMoveDialogBtn" class="move-btn">Mover</button>
-            <button id="cancelMoveDialogBtn">Cancelar</button>
+            <button id="confirmOperationDialogBtn" class="move-btn">Confirmar</button>
+            <button id="cancelOperationDialogBtn">Cancelar</button>
         </div>
     </div>
-    <div id="moveDialogOverlay" class="overlay" style="display: none;"></div>
+    <div id="operationDialogOverlay" class="overlay" style="display: none;"></div>
+
+    <!-- Rename Dialog -->
+    <div id="renameDialog" class="rename-dialog" style="display: none;">
+        <h3>Renomear Item</h3>
+        <p>Novo nome para <span id="renameFileName"></span>:</p>
+        <input type="text" id="newNameInput" style="width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box;">
+        <div style="margin-top: 20px;">
+            <button id="confirmRenameBtn" class="rename-btn">Renomear</button>
+            <button id="cancelRenameBtn">Cancelar</button>
+        </div>
+    </div>
+    <div id="renameDialogOverlay" class="overlay" style="display: none;"></div>
 
     <script>
-        // Current file being edited
-        let currentFile = null;
+        // Current server
+        let currentServer = null;
         // Current path in the file system
         let currentPath = '';
         // Console refresh interval
         let consoleInterval = null;
         // Track if console modal is open
         let isConsoleOpen = false;
-        // Track selected files for moving
+        // Track selected files for operations
         let selectedFiles = [];
-        // Track file being moved
-        let fileToMove = null;
+        // Track item being operated on
+        let currentItem = null;
+        // Track current operation (copy, move, etc.)
+        let currentOperation = null;
+        // Track copied items
+        let clipboard = [];
         
         // File management functionality
         document.addEventListener('DOMContentLoaded', function() {
-            // Load file list and server status
-            loadFileList();
-            loadServerStatus();
+            // Load server list
+            loadServerList();
+            
+            // Event listeners for server management
+            document.getElementById('createServerBtn').addEventListener('click', showCreateServerForm);
+            document.getElementById('confirmCreateServerBtn').addEventListener('click', createServer);
+            document.getElementById('cancelCreateServerBtn').addEventListener('click', hideCreateServerForm);
+            document.getElementById('deleteServerBtn').addEventListener('click', deleteServer);
             
             // Event listeners for file management
             document.getElementById('refreshBtn').addEventListener('click', loadFileList);
@@ -425,16 +533,22 @@
             document.getElementById('cancelUploadBtn').addEventListener('click', toggleUploadForm);
             document.getElementById('fileUploadForm').addEventListener('submit', handleFileUpload);
             document.getElementById('selectAllCheckbox').addEventListener('change', toggleSelectAll);
-            document.getElementById('moveSelectedBtn').addEventListener('click', showMoveDestinationInput);
-            document.getElementById('confirmMoveBtn').addEventListener('click', moveSelectedFiles);
-            document.getElementById('cancelMoveBtn').addEventListener('click', cancelMoveOperation);
+            document.getElementById('copyBtn').addEventListener('click', copySelectedFiles);
+            document.getElementById('pasteBtn').addEventListener('click', pasteFiles);
+            document.getElementById('moveSelectedBtn').addEventListener('click', moveSelectedFiles);
+            document.getElementById('cancelOperationBtn').addEventListener('click', cancelOperation);
             
-            // Event listeners for move dialog
-            document.getElementById('confirmMoveDialogBtn').addEventListener('click', moveFileFromDialog);
-            document.getElementById('cancelMoveDialogBtn').addEventListener('click', closeMoveDialog);
-            document.getElementById('moveDialogOverlay').addEventListener('click', closeMoveDialog);
+            // Event listeners for operation dialog
+            document.getElementById('confirmOperationDialogBtn').addEventListener('click', confirmOperationDialog);
+            document.getElementById('cancelOperationDialogBtn').addEventListener('click', closeOperationDialog);
+            document.getElementById('operationDialogOverlay').addEventListener('click', closeOperationDialog);
             
-            // Event listeners for server management
+            // Event listeners for rename dialog
+            document.getElementById('confirmRenameBtn').addEventListener('click', confirmRename);
+            document.getElementById('cancelRenameBtn').addEventListener('click', closeRenameDialog);
+            document.getElementById('renameDialogOverlay').addEventListener('click', closeRenameDialog);
+            
+            // Event listeners for server controls
             document.getElementById('startServerBtn').addEventListener('click', startServer);
             document.getElementById('stopServerBtn').addEventListener('click', stopServer);
             document.getElementById('restartServerBtn').addEventListener('click', restartServer);
@@ -475,8 +589,8 @@
             document.getElementById('downloadFileBtn').addEventListener('click', downloadCurrentFile);
         });
 
-        function showMessage(text, isSuccess = true) {
-            const messageDiv = document.getElementById('message');
+        function showMessage(text, isSuccess = true, elementId = 'message') {
+            const messageDiv = document.getElementById(elementId);
             messageDiv.textContent = text;
             messageDiv.className = isSuccess ? 'success' : 'error';
             
@@ -487,20 +601,163 @@
             }, 5000);
         }
 
+        function loadServerList() {
+            fetch('/api/servers')
+                .then(response => {
+                    if (response.status === 401) {
+                        // Redirect to login if not authenticated
+                        window.location.href = '/login';
+                        return;
+                    }
+                    return response.json();
+                })
+                .then(servers => {
+                    const serverList = document.getElementById('serverList');
+                    serverList.innerHTML = '';
+                    
+                    if (servers.length === 0) {
+                        serverList.innerHTML = '<p>Nenhum servidor encontrado. Crie um novo servidor.</p>';
+                        return;
+                    }
+                    
+                    servers.forEach(server => {
+                        const serverCard = document.createElement('div');
+                        serverCard.className = 'server-card';
+                        serverCard.innerHTML = `
+                            <h3>${server.name}</h3>
+                            <p>Modificado: ${server.modified}</p>
+                        `;
+                        serverCard.addEventListener('click', () => selectServer(server.name));
+                        serverList.appendChild(serverCard);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading server list:', error);
+                    if (error instanceof SyntaxError) {
+                        // Redirect to login if we get HTML instead of JSON
+                        window.location.href = '/login';
+                    } else {
+                        showMessage('Erro ao carregar a lista de servidores', false, 'serverMessage');
+                    }
+                });
+        }
+
+        function selectServer(serverName) {
+            currentServer = serverName;
+            document.getElementById('selectedServerName').textContent = `Servidor: ${serverName}`;
+            document.getElementById('selectedServerSection').style.display = 'block';
+            document.getElementById('fileManagerSection').style.display = 'block';
+            
+            // Update server cards selection
+            document.querySelectorAll('.server-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+            
+            // Load server status and file list
+            loadServerStatus();
+            loadFileList();
+        }
+
+        function showCreateServerForm() {
+            document.getElementById('createServerForm').style.display = 'block';
+            document.getElementById('serverNameInput').value = '';
+            document.getElementById('serverNameInput').focus();
+        }
+
+        function hideCreateServerForm() {
+            document.getElementById('createServerForm').style.display = 'none';
+        }
+
+        function createServer() {
+            const serverName = document.getElementById('serverNameInput').value.trim();
+            if (!serverName) {
+                showMessage('Por favor, informe o nome do servidor', false, 'serverMessage');
+                return;
+            }
+            
+            fetch('/api/servers', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ name: serverName })
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                return response.json();
+            })
+            .then(data => {
+                showMessage(data.message || 'Servidor criado com sucesso!', true, 'serverMessage');
+                hideCreateServerForm();
+                loadServerList();
+            })
+            .catch(error => {
+                console.error('Error creating server:', error);
+                if (error instanceof SyntaxError) {
+                    window.location.href = '/login';
+                } else {
+                    showMessage('Erro ao criar servidor', false, 'serverMessage');
+                }
+            });
+        }
+
+        function deleteServer() {
+            if (!currentServer) {
+                showMessage('Nenhum servidor selecionado', false, 'serverMessage');
+                return;
+            }
+            
+            if (!confirm(`Tem certeza que deseja excluir o servidor ${currentServer}? Esta ação não pode ser desfeita.`)) {
+                return;
+            }
+            
+            fetch(`/api/servers/${currentServer}`, {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                return response.json();
+            })
+            .then(data => {
+                showMessage(data.message || 'Servidor excluído com sucesso!', true, 'serverMessage');
+                currentServer = null;
+                document.getElementById('selectedServerSection').style.display = 'none';
+                document.getElementById('fileManagerSection').style.display = 'none';
+                loadServerList();
+            })
+            .catch(error => {
+                console.error('Error deleting server:', error);
+                if (error instanceof SyntaxError) {
+                    window.location.href = '/login';
+                } else {
+                    showMessage('Erro ao excluir servidor', false, 'serverMessage');
+                }
+            });
+        }
+
         function updateBreadcrumb() {
             const breadcrumb = document.getElementById('breadcrumb');
             breadcrumb.innerHTML = '';
             
-            // Add root link
-            const rootLink = document.createElement('a');
-            rootLink.href = '#';
-            rootLink.textContent = 'Raiz';
-            rootLink.onclick = function(e) {
+            if (!currentServer) return;
+            
+            // Add server link
+            const serverLink = document.createElement('a');
+            serverLink.href = '#';
+            serverLink.textContent = currentServer;
+            serverLink.onclick = function(e) {
                 e.preventDefault();
                 currentPath = '';
                 loadFileList();
             };
-            breadcrumb.appendChild(rootLink);
+            breadcrumb.appendChild(serverLink);
             
             // Add path segments
             if (currentPath) {
@@ -528,7 +785,11 @@
         }
 
         function loadFileList() {
-            const url = currentPath ? `/api/files?path=${encodeURIComponent(currentPath)}` : '/api/files';
+            if (!currentServer) return;
+            
+            const url = currentPath ? 
+                `/api/servers/${currentServer}/files?path=${encodeURIComponent(currentPath)}` : 
+                `/api/servers/${currentServer}/files`;
             
             fetch(url)
                 .then(response => {
@@ -556,31 +817,32 @@
                         const row = document.createElement('tr');
                         if (file.type === 'Pasta') {
                             row.innerHTML = `
-                                <td><input type="checkbox" class="file-checkbox" data-filename="${file.name}"></td>
+                                <td><input type="checkbox" class="file-checkbox" data-filename="${file.name}" data-type="${file.type}"></td>
                                 <td><a href="#" onclick="enterDirectory('${file.name}')">${file.name}</a></td>
                                 <td>${file.type}</td>
                                 <td>${file.size}</td>
                                 <td>${file.modified}</td>
                                 <td class="file-actions">
+                                    <button onclick="renameItem('${file.name}', 'Pasta')" class="rename-btn">Renomear</button>
                                     <button onclick="viewFolder('${file.name}')" style="background-color: #FF9800;">Visualizar</button>
-                                    <button onclick="deleteFile('${file.name}')" style="background-color: #f44336;">Apagar</button>
+                                    <button onclick="deleteFile('${file.name}', 'Pasta')" style="background-color: #f44336;">Apagar</button>
                                 </td>
                             `;
                         } else {
                             // Check if file is a ZIP file
                             const isZip = file.name.toLowerCase().endsWith('.zip');
                             row.innerHTML = `
-                                <td><input type="checkbox" class="file-checkbox" data-filename="${file.name}"></td>
+                                <td><input type="checkbox" class="file-checkbox" data-filename="${file.name}" data-type="${file.type}"></td>
                                 <td>${file.name}</td>
                                 <td>${file.type}</td>
                                 <td>${file.size}</td>
                                 <td>${file.modified}</td>
                                 <td class="file-actions">
-                                    <button onclick="editFile('${file.name}')">Editar</button>
+                                    <button onclick="editFile('${file.name}')" class="copy-btn">Editar</button>
                                     <button onclick="downloadFile('${file.name}')" style="background-color: #2196F3;">Baixar</button>
                                     ${isZip ? `<button onclick="extractZip('${file.name}')" class="extract-btn">Extrair</button>` : ''}
-                                    <button onclick="showMoveDialog('${file.name}')" class="move-btn">Mover</button>
-                                    <button onclick="deleteFile('${file.name}')" style="background-color: #f44336;">Apagar</button>
+                                    <button onclick="renameItem('${file.name}', 'Arquivo')" class="rename-btn">Renomear</button>
+                                    <button onclick="deleteFile('${file.name}', 'Arquivo')" style="background-color: #f44336;">Apagar</button>
                                 </td>
                             `;
                         }
@@ -589,7 +851,7 @@
                     
                     // Add event listeners to checkboxes
                     document.querySelectorAll('.file-checkbox').forEach(checkbox => {
-                        checkbox.addEventListener('change', updateMoveButtonVisibility);
+                        checkbox.addEventListener('change', updateOperationButtonsVisibility);
                     });
                 })
                 .catch(error => {
@@ -610,8 +872,8 @@
 
         function editFile(filename) {
             const url = currentPath ? 
-                `/api/files/${filename}?path=${encodeURIComponent(currentPath)}` : 
-                `/api/files/${filename}`;
+                `/api/servers/${currentServer}/files/${filename}?path=${encodeURIComponent(currentPath)}` : 
+                `/api/servers/${currentServer}/files/${filename}`;
                 
             fetch(url)
                 .then(response => {
@@ -625,7 +887,6 @@
                     return response.json();
                 })
                 .then(data => {
-                    currentFile = filename;
                     document.getElementById('editingFilename').textContent = filename;
                     document.getElementById('fileContent').value = data.content;
                     document.getElementById('editModal').style.display = 'block';
@@ -641,12 +902,13 @@
         }
 
         function saveFile() {
-            if (!currentFile) return;
+            const filename = document.getElementById('editingFilename').textContent;
+            if (!filename) return;
             
             const content = document.getElementById('fileContent').value;
             const url = currentPath ? 
-                `/api/files/${currentFile}?path=${encodeURIComponent(currentPath)}` : 
-                `/api/files/${currentFile}`;
+                `/api/servers/${currentServer}/files/${filename}?path=${encodeURIComponent(currentPath)}` : 
+                `/api/servers/${currentServer}/files/${filename}`;
                 
             fetch(url, {
                 method: 'POST',
@@ -683,8 +945,8 @@
         function downloadFile(filename) {
             // Create a temporary link to trigger download
             const url = currentPath ? 
-                `/api/download/${filename}?path=${encodeURIComponent(currentPath)}` : 
-                `/api/download/${filename}`;
+                `/api/servers/${currentServer}/download/${filename}?path=${encodeURIComponent(currentPath)}` : 
+                `/api/servers/${currentServer}/download/${filename}`;
                 
             const link = document.createElement('a');
             link.href = url;
@@ -695,18 +957,19 @@
         }
 
         function downloadCurrentFile() {
-            if (!currentFile) return;
-            downloadFile(currentFile);
+            const filename = document.getElementById('editingFilename').textContent;
+            if (!filename) return;
+            downloadFile(filename);
         }
 
-        function deleteFile(filename) {
-            if (!confirm(`Tem certeza que deseja apagar ${filename}?`)) {
+        function deleteFile(filename, type) {
+            if (!confirm(`Tem certeza que deseja apagar ${type === 'Pasta' ? 'a pasta' : 'o arquivo'} ${filename}?`)) {
                 return;
             }
             
             const url = currentPath ? 
-                `/api/files/${filename}?path=${encodeURIComponent(currentPath)}` : 
-                `/api/files/${filename}`;
+                `/api/servers/${currentServer}/files/${filename}?path=${encodeURIComponent(currentPath)}` : 
+                `/api/servers/${currentServer}/files/${filename}`;
                 
             fetch(url, {
                 method: 'DELETE'
@@ -722,7 +985,7 @@
                 return response.json();
             })
             .then(data => {
-                showMessage('Arquivo apagado com sucesso!');
+                showMessage(`${type === 'Pasta' ? 'Pasta' : 'Arquivo'} apagado com sucesso!`);
                 loadFileList(); // Refresh file list
             })
             .catch(error => {
@@ -730,7 +993,7 @@
                 if (error instanceof SyntaxError) {
                     window.location.href = '/login';
                 } else {
-                    showMessage(`Erro ao apagar o arquivo ${filename}`, false);
+                    showMessage(`Erro ao apagar ${type === 'Pasta' ? 'a pasta' : 'o arquivo'} ${filename}`, false);
                 }
             });
         }
@@ -741,8 +1004,8 @@
             }
             
             const url = currentPath ? 
-                `/api/extract/${filename}` : 
-                `/api/extract/${filename}`;
+                `/api/servers/${currentServer}/extract/${filename}` : 
+                `/api/servers/${currentServer}/extract/${filename}`;
                 
             fetch(url, {
                 method: 'POST',
@@ -779,7 +1042,7 @@
             const folderName = prompt('Nome da nova pasta:');
             if (!folderName) return;
             
-            fetch('/api/directories', {
+            fetch(`/api/servers/${currentServer}/directories`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -879,7 +1142,7 @@
             });
             
             // Send request
-            xhr.open('POST', '/api/upload');
+            xhr.open('POST', `/api/servers/${currentServer}/upload`);
             xhr.send(formData);
         }
         
@@ -892,51 +1155,94 @@
                 checkbox.checked = selectAllCheckbox.checked;
             });
             
-            updateMoveButtonVisibility();
+            updateOperationButtonsVisibility();
         }
         
-        function updateMoveButtonVisibility() {
+        function updateOperationButtonsVisibility() {
             const selectedCheckboxes = document.querySelectorAll('.file-checkbox:checked');
+            const copyBtn = document.getElementById('copyBtn');
             const moveSelectedBtn = document.getElementById('moveSelectedBtn');
             
             if (selectedCheckboxes.length > 0) {
+                copyBtn.style.display = 'inline-block';
                 moveSelectedBtn.style.display = 'inline-block';
             } else {
+                copyBtn.style.display = 'none';
                 moveSelectedBtn.style.display = 'none';
-                hideMoveDestinationInput();
+                hideOperationInput();
             }
         }
         
-        function showMoveDestinationInput() {
-            document.getElementById('destinationPath').style.display = 'inline-block';
-            document.getElementById('confirmMoveBtn').style.display = 'inline-block';
-            document.getElementById('cancelMoveBtn').style.display = 'inline-block';
-            document.getElementById('destinationPath').value = currentPath || '';
-            document.getElementById('destinationPath').focus();
+        function copySelectedFiles() {
+            const selectedCheckboxes = document.querySelectorAll('.file-checkbox:checked');
+            clipboard = Array.from(selectedCheckboxes).map(checkbox => ({
+                name: checkbox.dataset.filename,
+                type: checkbox.dataset.type
+            }));
+            
+            document.getElementById('pasteBtn').style.display = 'inline-block';
+            showMessage(`${clipboard.length} item(s) copiado(s) para a área de transferência`);
         }
         
-        function hideMoveDestinationInput() {
-            document.getElementById('destinationPath').style.display = 'none';
-            document.getElementById('confirmMoveBtn').style.display = 'none';
-            document.getElementById('cancelMoveBtn').style.display = 'none';
-        }
-        
-        function cancelMoveOperation() {
-            hideMoveDestinationInput();
-            document.getElementById('selectAllCheckbox').checked = false;
-            document.querySelectorAll('.file-checkbox').forEach(checkbox => {
-                checkbox.checked = false;
-            });
-            updateMoveButtonVisibility();
-        }
-        
-        function moveSelectedFiles() {
-            const destinationPath = document.getElementById('destinationPath').value;
-            if (!destinationPath) {
-                showMessage('Por favor, informe o caminho de destino.', false);
+        function pasteFiles() {
+            if (clipboard.length === 0) {
+                showMessage('Nenhum item na área de transferência', false);
                 return;
             }
             
+            // For each item in clipboard, copy it to current directory
+            let successCount = 0;
+            let errorCount = 0;
+            
+            clipboard.forEach(item => {
+                fetch(`/api/servers/${currentServer}/copy`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filename: item.name,
+                        destinationPath: currentPath,
+                        currentPath: getCurrentPathForItem(item.name)
+                    })
+                })
+                .then(response => {
+                    if (response.ok) {
+                        successCount++;
+                    } else {
+                        errorCount++;
+                    }
+                    
+                    // Check if all operations are complete
+                    if (successCount + errorCount === clipboard.length) {
+                        if (errorCount === 0) {
+                            showMessage(`${successCount} item(s) colado(s) com sucesso!`);
+                        } else {
+                            showMessage(`${successCount} item(s) colado(s) com sucesso, ${errorCount} falharam`, false);
+                        }
+                        loadFileList(); // Refresh file list
+                    }
+                })
+                .catch(error => {
+                    errorCount++;
+                    console.error('Error pasting item:', error);
+                    
+                    // Check if all operations are complete
+                    if (successCount + errorCount === clipboard.length) {
+                        showMessage(`${successCount} item(s) colado(s) com sucesso, ${errorCount} falharam`, false);
+                        loadFileList(); // Refresh file list
+                    }
+                });
+            });
+        }
+        
+        function getCurrentPathForItem(itemName) {
+            // This would need to be implemented to find the path of an item
+            // For now, we'll assume it's in the current directory
+            return currentPath;
+        }
+        
+        function moveSelectedFiles() {
             const selectedCheckboxes = document.querySelectorAll('.file-checkbox:checked');
             const filenames = Array.from(selectedCheckboxes).map(checkbox => checkbox.dataset.filename);
             
@@ -945,13 +1251,63 @@
                 return;
             }
             
-            fetch('/api/move-multiple', {
+            // Store filenames for later use
+            selectedFiles = filenames;
+            currentOperation = 'move';
+            
+            // Show destination input
+            showOperationInput('Mover', filenames);
+        }
+        
+        function showOperationInput(operation, filenames) {
+            document.getElementById('destinationPath').style.display = 'inline-block';
+            document.getElementById('confirmOperationBtn').style.display = 'inline-block';
+            document.getElementById('cancelOperationBtn').style.display = 'inline-block';
+            document.getElementById('destinationPath').value = currentPath || '';
+            document.getElementById('destinationPath').focus();
+        }
+        
+        function hideOperationInput() {
+            document.getElementById('destinationPath').style.display = 'none';
+            document.getElementById('confirmOperationBtn').style.display = 'none';
+            document.getElementById('cancelOperationBtn').style.display = 'none';
+        }
+        
+        function cancelOperation() {
+            hideOperationInput();
+            document.getElementById('selectAllCheckbox').checked = false;
+            document.querySelectorAll('.file-checkbox').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            updateOperationButtonsVisibility();
+            selectedFiles = [];
+        }
+        
+        function confirmOperation() {
+            const destinationPath = document.getElementById('destinationPath').value;
+            if (!destinationPath) {
+                showMessage('Por favor, informe o caminho de destino.', false);
+                return;
+            }
+            
+            if (currentOperation === 'move') {
+                moveFiles(destinationPath);
+            }
+        }
+        
+        function moveFiles(destinationPath) {
+            if (selectedFiles.length === 0) {
+                showMessage('Nenhum arquivo selecionado.', false);
+                return;
+            }
+            
+            fetch(`/api/servers/${currentServer}/move-multiple`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    filenames: filenames,
+                    filenames: selectedFiles,
                     destinationPath: destinationPath,
                     currentPath: currentPath
                 })
@@ -978,7 +1334,7 @@
                 }
                 
                 // Clear selection and hide move controls
-                cancelMoveOperation();
+                cancelOperation();
                 loadFileList(); // Refresh file list
             })
             .catch(error => {
@@ -991,10 +1347,12 @@
             });
         }
         
-        // Move file dialog functions
-        function showMoveDialog(filename) {
-            fileToMove = filename;
-            document.getElementById('moveFileName').textContent = filename;
+        // Operation dialog functions
+        function showOperationDialog(operation, filename) {
+            currentOperation = operation;
+            currentItem = filename;
+            document.getElementById('operationDialogTitle').textContent = operation === 'copy' ? 'Copiar Item' : 'Mover Item';
+            document.getElementById('operationFileName').textContent = filename;
             
             // Populate destination select with parent directories
             const destinationSelect = document.getElementById('destinationSelect');
@@ -1023,29 +1381,120 @@
             destinationSelect.appendChild(pluginsOption);
             
             // Show dialog
-            document.getElementById('moveDialog').style.display = 'block';
-            document.getElementById('moveDialogOverlay').style.display = 'block';
+            document.getElementById('operationDialog').style.display = 'block';
+            document.getElementById('operationDialogOverlay').style.display = 'block';
         }
         
-        function closeMoveDialog() {
-            document.getElementById('moveDialog').style.display = 'none';
-            document.getElementById('moveDialogOverlay').style.display = 'none';
-            fileToMove = null;
+        function closeOperationDialog() {
+            document.getElementById('operationDialog').style.display = 'none';
+            document.getElementById('operationDialogOverlay').style.display = 'none';
+            currentOperation = null;
+            currentItem = null;
         }
         
-        function moveFileFromDialog() {
-            if (!fileToMove) return;
+        function confirmOperationDialog() {
+            if (!currentItem || !currentOperation) return;
             
             const destinationPath = document.getElementById('destinationSelect').value;
             
-            fetch('/api/move', {
+            if (currentOperation === 'copy') {
+                fetch(`/api/servers/${currentServer}/copy`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filename: currentItem,
+                        destinationPath: destinationPath,
+                        currentPath: currentPath
+                    })
+                })
+                .then(response => {
+                    if (response.status === 401) {
+                        window.location.href = '/login';
+                        return;
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    closeOperationDialog();
+                    showMessage(data.message || 'Item copiado com sucesso!');
+                    loadFileList(); // Refresh file list
+                })
+                .catch(error => {
+                    console.error('Error copying item:', error);
+                    if (error instanceof SyntaxError) {
+                        window.location.href = '/login';
+                    } else {
+                        showMessage('Erro ao copiar item', false);
+                    }
+                });
+            } else if (currentOperation === 'move') {
+                fetch(`/api/servers/${currentServer}/move`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filename: currentItem,
+                        destinationPath: destinationPath,
+                        currentPath: currentPath
+                    })
+                })
+                .then(response => {
+                    if (response.status === 401) {
+                        window.location.href = '/login';
+                        return;
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    closeOperationDialog();
+                    showMessage(data.message || 'Item movido com sucesso!');
+                    loadFileList(); // Refresh file list
+                })
+                .catch(error => {
+                    console.error('Error moving item:', error);
+                    if (error instanceof SyntaxError) {
+                        window.location.href = '/login';
+                    } else {
+                        showMessage('Erro ao mover item', false);
+                    }
+                });
+            }
+        }
+        
+        // Rename functions
+        function renameItem(filename, type) {
+            currentItem = filename;
+            document.getElementById('renameFileName').textContent = filename;
+            document.getElementById('newNameInput').value = filename;
+            document.getElementById('renameDialog').style.display = 'block';
+            document.getElementById('renameDialogOverlay').style.display = 'block';
+            document.getElementById('newNameInput').focus();
+        }
+        
+        function closeRenameDialog() {
+            document.getElementById('renameDialog').style.display = 'none';
+            document.getElementById('renameDialogOverlay').style.display = 'none';
+            currentItem = null;
+        }
+        
+        function confirmRename() {
+            const newName = document.getElementById('newNameInput').value.trim();
+            if (!newName || newName === currentItem) {
+                closeRenameDialog();
+                return;
+            }
+            
+            fetch(`/api/servers/${currentServer}/rename`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    filename: fileToMove,
-                    destinationPath: destinationPath,
+                    oldName: currentItem,
+                    newName: newName,
                     currentPath: currentPath
                 })
             })
@@ -1057,23 +1506,25 @@
                 return response.json();
             })
             .then(data => {
-                closeMoveDialog();
-                showMessage(data.message || 'Arquivo movido com sucesso!');
+                closeRenameDialog();
+                showMessage(data.message || 'Item renomeado com sucesso!');
                 loadFileList(); // Refresh file list
             })
             .catch(error => {
-                console.error('Error moving file:', error);
+                console.error('Error renaming item:', error);
                 if (error instanceof SyntaxError) {
                     window.location.href = '/login';
                 } else {
-                    showMessage('Erro ao mover arquivo', false);
+                    showMessage('Erro ao renomear item', false);
                 }
             });
         }
         
         // Server management functions
         function loadServerStatus() {
-            fetch('/api/server/status')
+            if (!currentServer) return;
+            
+            fetch(`/api/servers/${currentServer}/status`)
                 .then(response => response.json())
                 .then(data => {
                     updateStatusDisplay(data);
@@ -1131,7 +1582,12 @@
         }
         
         function startServer() {
-            fetch('/api/server/start', {
+            if (!currentServer) {
+                showMessage('Nenhum servidor selecionado', false, 'serverMessage');
+                return;
+            }
+            
+            fetch(`/api/servers/${currentServer}/start`, {
                 method: 'POST'
             })
             .then(response => response.json())
@@ -1141,16 +1597,21 @@
             })
             .catch(error => {
                 console.error('Error starting server:', error);
-                showMessage('Erro ao iniciar o servidor', false);
+                showMessage('Erro ao iniciar o servidor', false, 'serverMessage');
             });
         }
         
         function stopServer() {
+            if (!currentServer) {
+                showMessage('Nenhum servidor selecionado', false, 'serverMessage');
+                return;
+            }
+            
             if (!confirm('Tem certeza que deseja parar o servidor?')) {
                 return;
             }
             
-            fetch('/api/server/stop', {
+            fetch(`/api/servers/${currentServer}/stop`, {
                 method: 'POST'
             })
             .then(response => response.json())
@@ -1160,16 +1621,21 @@
             })
             .catch(error => {
                 console.error('Error stopping server:', error);
-                showMessage('Erro ao parar o servidor', false);
+                showMessage('Erro ao parar o servidor', false, 'serverMessage');
             });
         }
         
         function restartServer() {
+            if (!currentServer) {
+                showMessage('Nenhum servidor selecionado', false, 'serverMessage');
+                return;
+            }
+            
             if (!confirm('Tem certeza que deseja reiniciar o servidor?')) {
                 return;
             }
             
-            fetch('/api/server/restart', {
+            fetch(`/api/servers/${currentServer}/restart`, {
                 method: 'POST'
             })
             .then(response => response.json())
@@ -1179,12 +1645,18 @@
             })
             .catch(error => {
                 console.error('Error restarting server:', error);
-                showMessage('Erro ao reiniciar o servidor', false);
+                showMessage('Erro ao reiniciar o servidor', false, 'serverMessage');
             });
         }
         
         function openConsoleModal() {
+            if (!currentServer) {
+                showMessage('Nenhum servidor selecionado', false, 'serverMessage');
+                return;
+            }
+            
             const consoleModal = document.getElementById('consoleModal');
+            document.getElementById('consoleServerName').textContent = currentServer;
             consoleModal.style.display = 'block';
             isConsoleOpen = true;
             
@@ -1212,9 +1684,9 @@
         }
         
         function loadServerConsole() {
-            if (!isConsoleOpen) return;
+            if (!isConsoleOpen || !currentServer) return;
             
-            fetch('/api/server/console')
+            fetch(`/api/servers/${currentServer}/console`)
                 .then(response => response.json())
                 .then(data => {
                     const consoleDiv = document.getElementById('serverConsole');

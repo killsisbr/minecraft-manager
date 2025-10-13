@@ -33,6 +33,7 @@ const writeFile = promisify(fs.writeFile);
 const unlink = promisify(fs.unlink);
 const mkdir = promisify(fs.mkdir);
 const rename = promisify(fs.rename);
+const copyFile = promisify(fs.copyFile);
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
@@ -140,18 +141,165 @@ app.get('/logout', (req, res) => {
   });
 });
 
-// API routes for file management
-// Get list of files in the Minecraft server directory
-app.get('/api/files', isAuthenticated, async (req, res) => {
+// API routes for server management
+// Get list of servers
+app.get('/api/servers', isAuthenticated, async (req, res) => {
   try {
+    const serversDir = path.join(__dirname, 'servers');
+    
+    // Create the servers directory if it doesn't exist
+    if (!fs.existsSync(serversDir)) {
+      await mkdir(serversDir, { recursive: true });
+    }
+    
+    const servers = await readdir(serversDir);
+    const serverList = [];
+    
+    for (const server of servers) {
+      const serverPath = path.join(serversDir, server);
+      const stats = await stat(serverPath);
+      
+      if (stats.isDirectory()) {
+        serverList.push({
+          name: server,
+          path: serverPath,
+          modified: new Date(stats.mtime).toLocaleString('pt-BR')
+        });
+      }
+    }
+    
+    res.json(serverList);
+  } catch (error) {
+    console.error('Error reading servers directory:', error);
+    res.status(500).json({ error: 'Failed to read servers directory' });
+  }
+});
+
+// Create a new server
+app.post('/api/servers', isAuthenticated, async (req, res) => {
+  try {
+    const { name } = req.body;
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, name);
+    
+    // Create server directory
+    await mkdir(serverPath, { recursive: true });
+    
+    // Create default directories
+    await mkdir(path.join(serverPath, 'plugins'), { recursive: true });
+    await mkdir(path.join(serverPath, 'logs'), { recursive: true });
+    await mkdir(path.join(serverPath, 'world'), { recursive: true });
+    
+    // Create default configuration files
+    const serverProperties = `# Minecraft server properties
+# Generated on ${new Date().toString()}
+gamemode=survival
+difficulty=normal
+level-type=DEFAULT
+max-players=20
+online-mode=true`;
+    
+    const configYml = `# Configuration file
+server-name: ${name}
+motd: Welcome to ${name} server!
+world:
+  name: world
+  seed: 12345
+  generator: default
+plugins:
+  enabled:
+    - essentials
+    - worldedit`;
+    
+    const bukkitYml = `# Bukkit configuration file
+# Settings for the Bukkit server implementation
+
+settings:
+  allow-end: true
+  warn-on-overload: true
+  permissions-file: permissions.yml
+  update-folder: update
+  plugin-profiling: false
+  connection-throttle: 4000
+  query-plugins: true
+  deprecated-verbose: default
+  shutdown-message: Server closed
+  minimum-api: none
+
+spawn-limits:
+  monsters: 70
+  animals: 15
+  water-animals: 5
+  ambient: 15
+
+chunk-gc:
+  period-in-ticks: 600
+
+ticks-per:
+  animal-spawns: 400
+  monster-spawns: 1
+  autosave: 6000
+
+aliases:
+  icanhasbukkit: version $1-`;
+    
+    // Write default configuration files
+    await writeFile(path.join(serverPath, 'server.properties'), serverProperties, 'utf8');
+    await writeFile(path.join(serverPath, 'config.yml'), configYml, 'utf8');
+    await writeFile(path.join(serverPath, 'bukkit.yml'), bukkitYml, 'utf8');
+    
+    res.json({ message: 'Server created successfully' });
+  } catch (error) {
+    console.error('Error creating server:', error);
+    res.status(500).json({ error: 'Failed to create server' });
+  }
+});
+
+// Delete a server
+app.delete('/api/servers/:serverName', isAuthenticated, async (req, res) => {
+  try {
+    const { serverName } = req.params;
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    
+    // Security check: ensure the path is within the servers directory
+    if (!serverPath.startsWith(serversDir)) {
+      return res.status(400).json({ error: 'Invalid server name' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
+    }
+    
+    // Delete server directory
+    await fs.promises.rm(serverPath, { recursive: true, force: true });
+    res.json({ message: 'Server deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting server:', error);
+    res.status(500).json({ error: 'Failed to delete server' });
+  }
+});
+
+// API routes for file management within a server
+// Get list of files in a server directory
+app.get('/api/servers/:serverName/files', isAuthenticated, async (req, res) => {
+  try {
+    const { serverName } = req.params;
     // Get the directory path from query parameter, default to root
     const relativePath = req.query.path || '';
-    const serverDir = path.join(__dirname, 'minecraft-server');
-    const targetDir = path.join(serverDir, relativePath);
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const targetDir = path.join(serverPath, relativePath);
     
     // Security check: ensure the path is within the server directory
-    if (!targetDir.startsWith(serverDir)) {
+    if (!targetDir.startsWith(serverPath)) {
       return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
     }
     
     // Create the directory if it doesn't exist
@@ -175,6 +323,7 @@ app.get('/api/files', isAuthenticated, async (req, res) => {
     }
     
     res.json({
+      server: serverName,
       path: relativePath,
       files: fileList
     });
@@ -184,18 +333,24 @@ app.get('/api/files', isAuthenticated, async (req, res) => {
   }
 });
 
-// Get content of a YAML file
-app.get('/api/files/:filename', isAuthenticated, async (req, res) => {
+// Get content of a file within a server
+app.get('/api/servers/:serverName/files/:filename', isAuthenticated, async (req, res) => {
   try {
-    const { filename } = req.params;
+    const { serverName, filename } = req.params;
     const relativePath = req.query.path || '';
-    const serverDir = path.join(__dirname, 'minecraft-server');
-    const targetDir = path.join(serverDir, relativePath);
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const targetDir = path.join(serverPath, relativePath);
     const filePath = path.join(targetDir, filename);
     
     // Security check: ensure the path is within the server directory
-    if (!filePath.startsWith(serverDir)) {
+    if (!filePath.startsWith(serverPath)) {
       return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
     }
     
     // Check if file exists
@@ -212,19 +367,25 @@ app.get('/api/files/:filename', isAuthenticated, async (req, res) => {
   }
 });
 
-// Save content to a YAML file
-app.post('/api/files/:filename', isAuthenticated, async (req, res) => {
+// Save content to a file within a server
+app.post('/api/servers/:serverName/files/:filename', isAuthenticated, async (req, res) => {
   try {
-    const { filename } = req.params;
+    const { serverName, filename } = req.params;
     const { content } = req.body;
     const relativePath = req.query.path || '';
-    const serverDir = path.join(__dirname, 'minecraft-server');
-    const targetDir = path.join(serverDir, relativePath);
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const targetDir = path.join(serverPath, relativePath);
     const filePath = path.join(targetDir, filename);
     
     // Security check: ensure the path is within the server directory
-    if (!filePath.startsWith(serverDir)) {
+    if (!filePath.startsWith(serverPath)) {
       return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
     }
     
     // Write file content
@@ -236,18 +397,24 @@ app.post('/api/files/:filename', isAuthenticated, async (req, res) => {
   }
 });
 
-// Delete a file
-app.delete('/api/files/:filename', isAuthenticated, async (req, res) => {
+// Delete a file within a server
+app.delete('/api/servers/:serverName/files/:filename', isAuthenticated, async (req, res) => {
   try {
-    const { filename } = req.params;
+    const { serverName, filename } = req.params;
     const relativePath = req.query.path || '';
-    const serverDir = path.join(__dirname, 'minecraft-server');
-    const targetDir = path.join(serverDir, relativePath);
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const targetDir = path.join(serverPath, relativePath);
     const filePath = path.join(targetDir, filename);
     
     // Security check: ensure the path is within the server directory
-    if (!filePath.startsWith(serverDir)) {
+    if (!filePath.startsWith(serverPath)) {
       return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
     }
     
     // Check if file exists
@@ -255,27 +422,39 @@ app.delete('/api/files/:filename', isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: 'File not found' });
     }
     
-    // Delete file
-    await unlink(filePath);
-    res.json({ message: 'File deleted successfully' });
+    // Delete file or directory
+    const stats = await stat(filePath);
+    if (stats.isDirectory()) {
+      await fs.promises.rm(filePath, { recursive: true, force: true });
+    } else {
+      await unlink(filePath);
+    }
+    res.json({ message: 'Item deleted successfully' });
   } catch (error) {
-    console.error('Error deleting file:', error);
-    res.status(500).json({ error: 'Failed to delete file' });
+    console.error('Error deleting item:', error);
+    res.status(500).json({ error: 'Failed to delete item' });
   }
 });
 
-// Create a new directory
-app.post('/api/directories', isAuthenticated, async (req, res) => {
+// Create a new directory within a server
+app.post('/api/servers/:serverName/directories', isAuthenticated, async (req, res) => {
   try {
+    const { serverName } = req.params;
     const { name } = req.body;
     const relativePath = req.body.path || '';
-    const serverDir = path.join(__dirname, 'minecraft-server');
-    const targetDir = path.join(serverDir, relativePath);
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const targetDir = path.join(serverPath, relativePath);
     const newDirPath = path.join(targetDir, name);
     
     // Security check: ensure the path is within the server directory
-    if (!newDirPath.startsWith(serverDir)) {
+    if (!newDirPath.startsWith(serverPath)) {
       return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
     }
     
     // Create directory
@@ -287,20 +466,27 @@ app.post('/api/directories', isAuthenticated, async (req, res) => {
   }
 });
 
-// Upload a file
-app.post('/api/upload', isAuthenticated, upload.array('file'), async (req, res) => {
+// Upload files to a server
+app.post('/api/servers/:serverName/upload', isAuthenticated, upload.array('file'), async (req, res) => {
   try {
+    const { serverName } = req.params;
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
     
     const relativePath = req.body.path || '';
-    const serverDir = path.join(__dirname, 'minecraft-server');
-    const targetDir = path.join(serverDir, relativePath);
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const targetDir = path.join(serverPath, relativePath);
     
     // Security check: ensure the path is within the server directory
-    if (!targetDir.startsWith(serverDir)) {
+    if (!targetDir.startsWith(serverPath)) {
       return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
     }
     
     // Move uploaded files to the correct location
@@ -319,18 +505,24 @@ app.post('/api/upload', isAuthenticated, upload.array('file'), async (req, res) 
   }
 });
 
-// Extract ZIP file
-app.post('/api/extract/:filename', isAuthenticated, async (req, res) => {
+// Extract ZIP file within a server
+app.post('/api/servers/:serverName/extract/:filename', isAuthenticated, async (req, res) => {
   try {
-    const { filename } = req.params;
+    const { serverName, filename } = req.params;
     const relativePath = req.body.path || '';
-    const serverDir = path.join(__dirname, 'minecraft-server');
-    const targetDir = path.join(serverDir, relativePath);
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const targetDir = path.join(serverPath, relativePath);
     const filePath = path.join(targetDir, filename);
     
     // Security check: ensure the path is within the server directory
-    if (!filePath.startsWith(serverDir)) {
+    if (!filePath.startsWith(serverPath)) {
       return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
     }
     
     // Check if file exists
@@ -354,21 +546,28 @@ app.post('/api/extract/:filename', isAuthenticated, async (req, res) => {
   }
 });
 
-// Move a file or directory
-app.post('/api/move', isAuthenticated, async (req, res) => {
+// Move a file or directory within a server
+app.post('/api/servers/:serverName/move', isAuthenticated, async (req, res) => {
   try {
+    const { serverName } = req.params;
     const { filename, destinationPath } = req.body;
     const relativePath = req.body.currentPath || '';
     
-    const serverDir = path.join(__dirname, 'minecraft-server');
-    const sourceDir = path.join(serverDir, relativePath);
-    const destDir = path.join(serverDir, destinationPath);
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const sourceDir = path.join(serverPath, relativePath);
+    const destDir = path.join(serverPath, destinationPath);
     const sourceFilePath = path.join(sourceDir, filename);
     const destFilePath = path.join(destDir, filename);
     
     // Security check: ensure paths are within the server directory
-    if (!sourceFilePath.startsWith(serverDir) || !destFilePath.startsWith(serverDir)) {
+    if (!sourceFilePath.startsWith(serverPath) || !destFilePath.startsWith(serverPath)) {
       return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
     }
     
     // Check if source file exists
@@ -395,19 +594,26 @@ app.post('/api/move', isAuthenticated, async (req, res) => {
   }
 });
 
-// Move multiple files
-app.post('/api/move-multiple', isAuthenticated, async (req, res) => {
+// Move multiple files within a server
+app.post('/api/servers/:serverName/move-multiple', isAuthenticated, async (req, res) => {
   try {
+    const { serverName } = req.params;
     const { filenames, destinationPath } = req.body;
     const relativePath = req.body.currentPath || '';
     
-    const serverDir = path.join(__dirname, 'minecraft-server');
-    const sourceDir = path.join(serverDir, relativePath);
-    const destDir = path.join(serverDir, destinationPath);
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const sourceDir = path.join(serverPath, relativePath);
+    const destDir = path.join(serverPath, destinationPath);
     
     // Security check: ensure paths are within the server directory
-    if (!sourceDir.startsWith(serverDir) || !destDir.startsWith(serverDir)) {
+    if (!sourceDir.startsWith(serverPath) || !destDir.startsWith(serverPath)) {
       return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
     }
     
     // Check if destination directory exists
@@ -453,17 +659,138 @@ app.post('/api/move-multiple', isAuthenticated, async (req, res) => {
   }
 });
 
-// Download a file
-app.get('/api/download/:filename', isAuthenticated, (req, res) => {
-  const { filename } = req.params;
+// Copy a file or directory within a server
+app.post('/api/servers/:serverName/copy', isAuthenticated, async (req, res) => {
+  try {
+    const { serverName } = req.params;
+    const { filename, destinationPath } = req.body;
+    const relativePath = req.body.currentPath || '';
+    
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const sourceDir = path.join(serverPath, relativePath);
+    const destDir = path.join(serverPath, destinationPath);
+    const sourceFilePath = path.join(sourceDir, filename);
+    const destFilePath = path.join(destDir, filename);
+    
+    // Security check: ensure paths are within the server directory
+    if (!sourceFilePath.startsWith(serverPath) || !destFilePath.startsWith(serverPath)) {
+      return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
+    }
+    
+    // Check if source file exists
+    if (!fs.existsSync(sourceFilePath)) {
+      return res.status(404).json({ error: 'Source file not found' });
+    }
+    
+    // Check if destination directory exists
+    if (!fs.existsSync(destDir)) {
+      return res.status(404).json({ error: 'Destination directory not found' });
+    }
+    
+    // Check if destination file already exists
+    if (fs.existsSync(destFilePath)) {
+      return res.status(400).json({ error: 'File already exists in destination' });
+    }
+    
+    // Copy file or directory
+    const stats = await stat(sourceFilePath);
+    if (stats.isDirectory()) {
+      // For directories, we need to copy recursively
+      await copyDirectory(sourceFilePath, destFilePath);
+    } else {
+      // For files, use copyFile
+      await copyFile(sourceFilePath, destFilePath);
+    }
+    
+    res.json({ message: 'Item copied successfully' });
+  } catch (error) {
+    console.error('Error copying item:', error);
+    res.status(500).json({ error: 'Failed to copy item' });
+  }
+});
+
+// Helper function to copy directories recursively
+async function copyDirectory(src, dest) {
+  const entries = await readdir(src, { withFileTypes: true });
+  await mkdir(dest, { recursive: true });
+  
+  for (let entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    
+    if (entry.isDirectory()) {
+      await copyDirectory(srcPath, destPath);
+    } else {
+      await copyFile(srcPath, destPath);
+    }
+  }
+}
+
+// Rename a file or directory within a server
+app.post('/api/servers/:serverName/rename', isAuthenticated, async (req, res) => {
+  try {
+    const { serverName } = req.params;
+    const { oldName, newName } = req.body;
+    const relativePath = req.body.currentPath || '';
+    
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const targetDir = path.join(serverPath, relativePath);
+    const oldFilePath = path.join(targetDir, oldName);
+    const newFilePath = path.join(targetDir, newName);
+    
+    // Security check: ensure paths are within the server directory
+    if (!oldFilePath.startsWith(serverPath) || !newFilePath.startsWith(serverPath)) {
+      return res.status(400).json({ error: 'Invalid path' });
+    }
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
+    }
+    
+    // Check if source file exists
+    if (!fs.existsSync(oldFilePath)) {
+      return res.status(404).json({ error: 'Source file not found' });
+    }
+    
+    // Check if new name already exists
+    if (fs.existsSync(newFilePath)) {
+      return res.status(400).json({ error: 'A file or directory with that name already exists' });
+    }
+    
+    // Rename file or directory
+    await rename(oldFilePath, newFilePath);
+    res.json({ message: 'Item renamed successfully' });
+  } catch (error) {
+    console.error('Error renaming item:', error);
+    res.status(500).json({ error: 'Failed to rename item' });
+  }
+});
+
+// Download a file from a server
+app.get('/api/servers/:serverName/download/:filename', isAuthenticated, (req, res) => {
+  const { serverName, filename } = req.params;
   const relativePath = req.query.path || '';
-  const serverDir = path.join(__dirname, 'minecraft-server');
-  const targetDir = path.join(serverDir, relativePath);
+  const serversDir = path.join(__dirname, 'servers');
+  const serverPath = path.join(serversDir, serverName);
+  const targetDir = path.join(serverPath, relativePath);
   const filePath = path.join(targetDir, filename);
   
   // Security check: ensure the path is within the server directory
-  if (!filePath.startsWith(serverDir)) {
+  if (!filePath.startsWith(serverPath)) {
     return res.status(400).json({ error: 'Invalid path' });
+  }
+  
+  // Check if server exists
+  if (!fs.existsSync(serverPath)) {
+    return res.status(404).json({ error: 'Server not found' });
   }
   
   // Check if file exists
@@ -480,9 +807,11 @@ app.get('/api/download/:filename', isAuthenticated, (req, res) => {
   });
 });
 
-// Server management routes
+// Server management routes for Minecraft servers
 // Get server status
-app.get('/api/server/status', isAuthenticated, (req, res) => {
+app.get('/api/servers/:serverName/status', isAuthenticated, (req, res) => {
+  const { serverName } = req.params;
+  
   pm2.connect((err) => {
     if (err) {
       console.error(err);
@@ -496,16 +825,16 @@ app.get('/api/server/status', isAuthenticated, (req, res) => {
       }
       
       // Find Minecraft server process
-      const minecraftProcess = list.find(process => process.name === 'minecraft-server');
+      const serverProcess = list.find(process => process.name === serverName);
       pm2.disconnect();
       
-      if (minecraftProcess) {
+      if (serverProcess) {
         res.json({
-          running: minecraftProcess.pm2_env.status === 'online',
-          status: minecraftProcess.pm2_env.status,
-          pid: minecraftProcess.pid,
-          uptime: minecraftProcess.pm2_env.status === 'online' ? 
-            Math.floor((Date.now() - minecraftProcess.pm2_env.pm_uptime) / 1000) : 0
+          running: serverProcess.pm2_env.status === 'online',
+          status: serverProcess.pm2_env.status,
+          pid: serverProcess.pid,
+          uptime: serverProcess.pm2_env.status === 'online' ? 
+            Math.floor((Date.now() - serverProcess.pm2_env.pm_uptime) / 1000) : 0
         });
       } else {
         res.json({ running: false, status: 'stopped' });
@@ -515,7 +844,9 @@ app.get('/api/server/status', isAuthenticated, (req, res) => {
 });
 
 // Start Minecraft server
-app.post('/api/server/start', isAuthenticated, (req, res) => {
+app.post('/api/servers/:serverName/start', isAuthenticated, (req, res) => {
+  const { serverName } = req.params;
+  
   pm2.connect((err) => {
     if (err) {
       console.error(err);
@@ -529,22 +860,30 @@ app.post('/api/server/start', isAuthenticated, (req, res) => {
         return res.status(500).json({ error: 'Failed to get process list' });
       }
       
-      const minecraftProcess = list.find(process => process.name === 'minecraft-server');
-      if (minecraftProcess) {
+      const serverProcess = list.find(process => process.name === serverName);
+      if (serverProcess) {
         pm2.disconnect();
         return res.json({ message: 'Server is already running' });
       }
       
       // Start the server
-      const serverDir = path.join(__dirname, 'minecraft-server');
+      const serversDir = path.join(__dirname, 'servers');
+      const serverPath = path.join(serversDir, serverName);
+      
+      // Check if server exists
+      if (!fs.existsSync(serverPath)) {
+        pm2.disconnect();
+        return res.status(404).json({ error: 'Server not found' });
+      }
+      
       pm2.start({
-        name: 'minecraft-server',
+        name: serverName,
         script: 'java',
         args: ['-Xmx1024M', '-Xms1024M', '-jar', 'server.jar', 'nogui'],
-        cwd: serverDir,
+        cwd: serverPath,
         interpreter: 'none',
-        out_file: path.join(serverDir, 'logs', 'server.log'),
-        error_file: path.join(serverDir, 'logs', 'server-error.log'),
+        out_file: path.join(serverPath, 'logs', 'server.log'),
+        error_file: path.join(serverPath, 'logs', 'server-error.log'),
         combine_logs: true,
         log_date_format: 'YYYY-MM-DD HH:mm:ss'
       }, (err, apps) => {
@@ -560,14 +899,16 @@ app.post('/api/server/start', isAuthenticated, (req, res) => {
 });
 
 // Stop Minecraft server
-app.post('/api/server/stop', isAuthenticated, (req, res) => {
+app.post('/api/servers/:serverName/stop', isAuthenticated, (req, res) => {
+  const { serverName } = req.params;
+  
   pm2.connect((err) => {
     if (err) {
       console.error(err);
       return res.status(500).json({ error: 'Failed to connect to PM2' });
     }
     
-    pm2.stop('minecraft-server', (err, apps) => {
+    pm2.stop(serverName, (err, apps) => {
       pm2.disconnect();
       if (err) {
         console.error(err);
@@ -579,14 +920,16 @@ app.post('/api/server/stop', isAuthenticated, (req, res) => {
 });
 
 // Restart Minecraft server
-app.post('/api/server/restart', isAuthenticated, (req, res) => {
+app.post('/api/servers/:serverName/restart', isAuthenticated, (req, res) => {
+  const { serverName } = req.params;
+  
   pm2.connect((err) => {
     if (err) {
       console.error(err);
       return res.status(500).json({ error: 'Failed to connect to PM2' });
     }
     
-    pm2.restart('minecraft-server', (err, apps) => {
+    pm2.restart(serverName, (err, apps) => {
       pm2.disconnect();
       if (err) {
         console.error(err);
@@ -598,12 +941,19 @@ app.post('/api/server/restart', isAuthenticated, (req, res) => {
 });
 
 // Get server console logs
-app.get('/api/server/console', isAuthenticated, (req, res) => {
-  const serverDir = path.join(__dirname, 'minecraft-server');
-  const logFile = path.join(serverDir, 'logs', 'server.log');
+app.get('/api/servers/:serverName/console', isAuthenticated, (req, res) => {
+  const { serverName } = req.params;
+  const serversDir = path.join(__dirname, 'servers');
+  const serverPath = path.join(serversDir, serverName);
+  const logFile = path.join(serverPath, 'logs', 'server.log');
+  
+  // Check if server exists
+  if (!fs.existsSync(serverPath)) {
+    return res.status(404).json({ error: 'Server not found' });
+  }
   
   // Create logs directory if it doesn't exist
-  const logsDir = path.join(serverDir, 'logs');
+  const logsDir = path.join(serverPath, 'logs');
   if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
   }
@@ -657,9 +1007,9 @@ app.get('/favicon.ico', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   
-  // Create logs directory for Minecraft server
-  const logsDir = path.join(__dirname, 'minecraft-server', 'logs');
-  if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir, { recursive: true });
+  // Create servers directory if it doesn't exist
+  const serversDir = path.join(__dirname, 'servers');
+  if (!fs.existsSync(serversDir)) {
+    fs.mkdirSync(serversDir, { recursive: true });
   }
 });
