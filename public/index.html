@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Server Manager</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+        }
+        header {
+            background-color: #333;
+            color: white;
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+        .file-manager {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+        .server-manager {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+        .toolbar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 0.5rem 1rem;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .server-controls button {
+            margin-right: 0.5rem;
+        }
+        .stop-btn {
+            background-color: #f44336;
+        }
+        .stop-btn:hover {
+            background-color: #d32f2f;
+        }
+        .restart-btn {
+            background-color: #FF9800;
+        }
+        .restart-btn:hover {
+            background-color: #F57C00;
+        }
+        .console-btn {
+            background-color: #2196F3;
+        }
+        .console-btn:hover {
+            background-color: #1976D2;
+        }
+        .file-list {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .file-list th, .file-list td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .file-list th {
+            background-color: #f2f2f2;
+        }
+        .file-actions button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            margin-right: 0.5rem;
+        }
+        .upload-form {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 800px;
+            border-radius: 8px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #eee;
+        }
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: black;
+        }
+        .error {
+            color: red;
+            margin-top: 1rem;
+        }
+        .success {
+            color: green;
+            margin-top: 1rem;
+        }
+        .breadcrumb {
+            margin-bottom: 1rem;
+        }
+        .breadcrumb a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+        .breadcrumb a:hover {
+            text-decoration: underline;
+        }
+        .breadcrumb span {
+            margin: 0 0.5rem;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .server-status {
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+        .server-status.running {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .server-status.stopped {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .console {
+            background-color: #000;
+            color: #00ff00;
+            padding: 1rem;
+            border-radius: 4px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            margin-top: 1rem;
+        }
+        .console-line {
+            margin: 0;
+            line-height: 1.2;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-indicator.running {
+            background-color: #4CAF50;
+        }
+        .status-indicator.stopped {
+            background-color: #f44336;
+        }
+        .extract-btn {
+            background-color: #9C27B0;
+        }
+        .extract-btn:hover {
+            background-color: #7B1FA2;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Minecraft Server Manager</h1>
+        <div>
+            <span>Bem-vindo, <strong id="username">Usuário</strong></span>
+            <a href="/logout" style="margin-left: 1rem; color: #ff6b6b;">Sair</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Server Manager Section -->
+        <div class="server-manager">
+            <h2>Gerenciador do Servidor</h2>
+            
+            <div>
+                Status: 
+                <span id="statusIndicator" class="status-indicator stopped"></span>
+                <span id="statusText">Desconhecido</span>
+                <span id="uptime" style="margin-left: 1rem;"></span>
+            </div>
+            
+            <div class="server-controls">
+                <button id="startServerBtn">Iniciar Servidor</button>
+                <button id="stopServerBtn" class="stop-btn">Parar Servidor</button>
+                <button id="restartServerBtn" class="restart-btn">Reiniciar Servidor</button>
+                <button id="refreshStatusBtn">Atualizar Status</button>
+                <button id="consoleBtn" class="console-btn">Abrir Console</button>
+            </div>
+        </div>
+        
+        <!-- File Manager Section -->
+        <div class="file-manager">
+            <h2>Gerenciador de Arquivos</h2>
+            
+            <div class="breadcrumb" id="breadcrumb">
+                <!-- Breadcrumb will be populated here -->
+            </div>
+            
+            <div class="toolbar">
+                <button id="refreshBtn">Atualizar</button>
+                <button id="newFolderBtn">Nova Pasta</button>
+                <button id="uploadBtn">Importar Arquivo</button>
+            </div>
+            
+            <div id="message"></div>
+
+            <table class="file-list">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Tipo</th>
+                        <th>Tamanho</th>
+                        <th>Data de modificação</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="fileList">
+                    <!-- File list will be populated here -->
+                </tbody>
+            </table>
+            
+            <div class="upload-form" id="uploadForm" style="display: none;">
+                <h3>Importar Arquivo</h3>
+                <form id="fileUploadForm">
+                    <input type="file" id="fileInput" multiple>
+                    <button type="submit">Enviar</button>
+                    <button type="button" id="cancelUploadBtn">Cancelar</button>
+                </form>
+                <div class="progress-bar" id="progressBar" style="display: none;">
+                    <div class="progress-bar-fill" id="progressBarFill"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Server Console Modal -->
+    <div id="consoleModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Console do Servidor</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div>
+                Status: 
+                <span id="modalStatusIndicator" class="status-indicator stopped"></span>
+                <span id="modalStatusText">Desconhecido</span>
+                <span id="modalUptime" style="margin-left: 1rem;"></span>
+            </div>
+            <div class="server-controls" style="margin: 1rem 0;">
+                <button id="modalStartServerBtn">Iniciar</button>
+                <button id="modalStopServerBtn" class="stop-btn">Parar</button>
+                <button id="modalRestartServerBtn" class="restart-btn">Reiniciar</button>
+                <button id="modalRefreshStatusBtn">Atualizar</button>
+            </div>
+            <div id="serverConsole" class="console">
+                <!-- Console logs will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit YAML Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Editar Arquivo <span id="editingFilename"></span></h2>
+                <span class="close">&times;</span>
+            </div>
+            <textarea id="fileContent" rows="20" cols="60" style="width: 100%;"></textarea>
+            <br><br>
+            <button id="saveFileBtn">Salvar</button>
+            <button id="downloadFileBtn" style="background-color: #2196F3;">Baixar</button>
+        </div>
+    </div>
+
+    <script>
+        // Current file being edited
+        let currentFile = null;
+        // Current path in the file system
+        let currentPath = '';
+        // Console refresh interval
+        let consoleInterval = null;
+        // Track if console modal is open
+        let isConsoleOpen = false;
+        
+        // File management functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load file list and server status
+            loadFileList();
+            loadServerStatus();
+            
+            // Event listeners for file management
+            document.getElementById('refreshBtn').addEventListener('click', loadFileList);
+            document.getElementById('newFolderBtn').addEventListener('click', createNewFolder);
+            document.getElementById('uploadBtn').addEventListener('click', toggleUploadForm);
+            document.getElementById('cancelUploadBtn').addEventListener('click', toggleUploadForm);
+            document.getElementById('fileUploadForm').addEventListener('submit', handleFileUpload);
+            
+            // Event listeners for server management
+            document.getElementById('startServerBtn').addEventListener('click', startServer);
+            document.getElementById('stopServerBtn').addEventListener('click', stopServer);
+            document.getElementById('restartServerBtn').addEventListener('click', restartServer);
+            document.getElementById('refreshStatusBtn').addEventListener('click', loadServerStatus);
+            document.getElementById('consoleBtn').addEventListener('click', openConsoleModal);
+            
+            // Event listeners for console modal
+            document.getElementById('modalStartServerBtn').addEventListener('click', startServer);
+            document.getElementById('modalStopServerBtn').addEventListener('click', stopServer);
+            document.getElementById('modalRestartServerBtn').addEventListener('click', restartServer);
+            document.getElementById('modalRefreshStatusBtn').addEventListener('click', loadServerStatus);
+            
+            // Modal functionality
+            const consoleModal = document.getElementById('consoleModal');
+            const editModal = document.getElementById('editModal');
+            const consoleClose = consoleModal.querySelector('.close');
+            const editClose = editModal.querySelector('.close');
+            
+            consoleClose.onclick = function() {
+                closeConsoleModal();
+            };
+            
+            editClose.onclick = function() {
+                editModal.style.display = 'none';
+            };
+            
+            window.onclick = function(event) {
+                if (event.target == consoleModal) {
+                    closeConsoleModal();
+                }
+                if (event.target == editModal) {
+                    editModal.style.display = 'none';
+                }
+            };
+            
+            // Save file button
+            document.getElementById('saveFileBtn').addEventListener('click', saveFile);
+            document.getElementById('downloadFileBtn').addEventListener('click', downloadCurrentFile);
+        });
+
+        function showMessage(text, isSuccess = true) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = text;
+            messageDiv.className = isSuccess ? 'success' : 'error';
+            
+            // Clear message after 5 seconds
+            setTimeout(() => {
+                messageDiv.textContent = '';
+                messageDiv.className = '';
+            }, 5000);
+        }
+
+        function updateBreadcrumb() {
+            const breadcrumb = document.getElementById('breadcrumb');
+            breadcrumb.innerHTML = '';
+            
+            // Add root link
+            const rootLink = document.createElement('a');
+            rootLink.href = '#';
+            rootLink.textContent = 'Raiz';
+            rootLink.onclick = function(e) {
+                e.preventDefault();
+                currentPath = '';
+                loadFileList();
+            };
+            breadcrumb.appendChild(rootLink);
+            
+            // Add path segments
+            if (currentPath) {
+                const segments = currentPath.split('/');
+                let pathSoFar = '';
+                
+                segments.forEach((segment, index) => {
+                    const separator = document.createElement('span');
+                    separator.textContent = ' > ';
+                    breadcrumb.appendChild(separator);
+                    
+                    pathSoFar += (index > 0 ? '/' : '') + segment;
+                    
+                    const link = document.createElement('a');
+                    link.href = '#';
+                    link.textContent = segment;
+                    link.onclick = function(e) {
+                        e.preventDefault();
+                        currentPath = pathSoFar;
+                        loadFileList();
+                    };
+                    breadcrumb.appendChild(link);
+                });
+            }
+        }
+
+        function loadFileList() {
+            const url = currentPath ? `/api/files?path=${encodeURIComponent(currentPath)}` : '/api/files';
+            
+            fetch(url)
+                .then(response => {
+                    if (response.status === 401) {
+                        // Redirect to login if not authenticated
+                        window.location.href = '/login';
+                        return;
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Update breadcrumb
+                    currentPath = data.path || '';
+                    updateBreadcrumb();
+                    
+                    const fileList = document.getElementById('fileList');
+                    fileList.innerHTML = '';
+                    
+                    if (data.files.length === 0) {
+                        fileList.innerHTML = '<tr><td colspan="5">Nenhum arquivo encontrado</td></tr>';
+                        return;
+                    }
+                    
+                    data.files.forEach(file => {
+                        const row = document.createElement('tr');
+                        if (file.type === 'Pasta') {
+                            row.innerHTML = `
+                                <td><a href="#" onclick="enterDirectory('${file.name}')">${file.name}</a></td>
+                                <td>${file.type}</td>
+                                <td>${file.size}</td>
+                                <td>${file.modified}</td>
+                                <td class="file-actions">
+                                    <button onclick="viewFolder('${file.name}')" style="background-color: #FF9800;">Visualizar</button>
+                                    <button onclick="deleteFile('${file.name}')" style="background-color: #f44336;">Apagar</button>
+                                </td>
+                            `;
+                        } else {
+                            // Check if file is a ZIP file
+                            const isZip = file.name.toLowerCase().endsWith('.zip');
+                            row.innerHTML = `
+                                <td>${file.name}</td>
+                                <td>${file.type}</td>
+                                <td>${file.size}</td>
+                                <td>${file.modified}</td>
+                                <td class="file-actions">
+                                    <button onclick="editFile('${file.name}')">Editar</button>
+                                    <button onclick="downloadFile('${file.name}')" style="background-color: #2196F3;">Baixar</button>
+                                    ${isZip ? `<button onclick="extractZip('${file.name}')" class="extract-btn">Extrair</button>` : ''}
+                                    <button onclick="deleteFile('${file.name}')" style="background-color: #f44336;">Apagar</button>
+                                </td>
+                            `;
+                        }
+                        fileList.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading file list:', error);
+                    if (error instanceof SyntaxError) {
+                        // Redirect to login if we get HTML instead of JSON
+                        window.location.href = '/login';
+                    } else {
+                        showMessage('Erro ao carregar a lista de arquivos', false);
+                    }
+                });
+        }
+
+        function enterDirectory(dirname) {
+            currentPath = currentPath ? `${currentPath}/${dirname}` : dirname;
+            loadFileList();
+        }
+
+        function editFile(filename) {
+            const url = currentPath ? 
+                `/api/files/${filename}?path=${encodeURIComponent(currentPath)}` : 
+                `/api/files/${filename}`;
+                
+            fetch(url)
+                .then(response => {
+                    if (response.status === 401) {
+                        window.location.href = '/login';
+                        return;
+                    }
+                    if (!response.ok) {
+                        throw new Error('File not found');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    currentFile = filename;
+                    document.getElementById('editingFilename').textContent = filename;
+                    document.getElementById('fileContent').value = data.content;
+                    document.getElementById('editModal').style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error loading file:', error);
+                    if (error instanceof SyntaxError) {
+                        window.location.href = '/login';
+                    } else {
+                        showMessage(`Erro ao carregar o arquivo ${filename}`, false);
+                    }
+                });
+        }
+
+        function saveFile() {
+            if (!currentFile) return;
+            
+            const content = document.getElementById('fileContent').value;
+            const url = currentPath ? 
+                `/api/files/${currentFile}?path=${encodeURIComponent(currentPath)}` : 
+                `/api/files/${currentFile}`;
+                
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ content })
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error('Failed to save file');
+                }
+                return response.json();
+            })
+            .then(data => {
+                document.getElementById('editModal').style.display = 'none';
+                showMessage('Arquivo salvo com sucesso!');
+                loadFileList(); // Refresh file list
+            })
+            .catch(error => {
+                console.error('Error saving file:', error);
+                if (error instanceof SyntaxError) {
+                    window.location.href = '/login';
+                } else {
+                    showMessage('Erro ao salvar o arquivo', false);
+                }
+            });
+        }
+
+        function downloadFile(filename) {
+            // Create a temporary link to trigger download
+            const url = currentPath ? 
+                `/api/download/${filename}?path=${encodeURIComponent(currentPath)}` : 
+                `/api/download/${filename}`;
+                
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function downloadCurrentFile() {
+            if (!currentFile) return;
+            downloadFile(currentFile);
+        }
+
+        function deleteFile(filename) {
+            if (!confirm(`Tem certeza que deseja apagar ${filename}?`)) {
+                return;
+            }
+            
+            const url = currentPath ? 
+                `/api/files/${filename}?path=${encodeURIComponent(currentPath)}` : 
+                `/api/files/${filename}`;
+                
+            fetch(url, {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error('Failed to delete file');
+                }
+                return response.json();
+            })
+            .then(data => {
+                showMessage('Arquivo apagado com sucesso!');
+                loadFileList(); // Refresh file list
+            })
+            .catch(error => {
+                console.error('Error deleting file:', error);
+                if (error instanceof SyntaxError) {
+                    window.location.href = '/login';
+                } else {
+                    showMessage(`Erro ao apagar o arquivo ${filename}`, false);
+                }
+            });
+        }
+
+        function extractZip(filename) {
+            if (!confirm(`Tem certeza que deseja extrair o arquivo ${filename} neste diretório?`)) {
+                return;
+            }
+            
+            const url = currentPath ? 
+                `/api/extract/${filename}` : 
+                `/api/extract/${filename}`;
+                
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ path: currentPath })
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error('Failed to extract ZIP file');
+                }
+                return response.json();
+            })
+            .then(data => {
+                showMessage('Arquivo ZIP extraído com sucesso!');
+                loadFileList(); // Refresh file list
+            })
+            .catch(error => {
+                console.error('Error extracting ZIP file:', error);
+                if (error instanceof SyntaxError) {
+                    window.location.href = '/login';
+                } else {
+                    showMessage(`Erro ao extrair o arquivo ${filename}`, false);
+                }
+            });
+        }
+
+        function createNewFolder() {
+            const folderName = prompt('Nome da nova pasta:');
+            if (!folderName) return;
+            
+            fetch('/api/directories', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: folderName,
+                    path: currentPath
+                })
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error('Failed to create directory');
+                }
+                return response.json();
+            })
+            .then(data => {
+                showMessage('Pasta criada com sucesso!');
+                loadFileList(); // Refresh file list
+            })
+            .catch(error => {
+                console.error('Error creating directory:', error);
+                if (error instanceof SyntaxError) {
+                    window.location.href = '/login';
+                } else {
+                    showMessage(`Erro ao criar a pasta "${folderName}"`, false);
+                }
+            });
+        }
+
+        function viewFolder(foldername) {
+            enterDirectory(foldername);
+        }
+
+        function toggleUploadForm() {
+            const form = document.getElementById('uploadForm');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+            // Reset form when showing
+            if (form.style.display === 'block') {
+                document.getElementById('fileInput').value = '';
+                document.getElementById('progressBar').style.display = 'none';
+            }
+        }
+
+        function handleFileUpload(e) {
+            e.preventDefault();
+            const fileInput = document.getElementById('fileInput');
+            const files = fileInput.files;
+            
+            if (files.length === 0) {
+                showMessage('Por favor, selecione pelo menos um arquivo para enviar.', false);
+                return;
+            }
+            
+            // Show progress bar
+            const progressBar = document.getElementById('progressBar');
+            const progressBarFill = document.getElementById('progressBarFill');
+            progressBar.style.display = 'block';
+            progressBarFill.style.width = '0%';
+            
+            // Create FormData object
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('file', files[i]);
+            }
+            formData.append('path', currentPath);
+            
+            // Create XMLHttpRequest for progress tracking
+            const xhr = new XMLHttpRequest();
+            
+            // Update progress bar
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressBarFill.style.width = percentComplete + '%';
+                }
+            });
+            
+            // Handle completion
+            xhr.addEventListener('load', function() {
+                if (xhr.status === 200) {
+                    const response = JSON.parse(xhr.responseText);
+                    showMessage(response.message || 'Arquivo(s) enviado(s) com sucesso!');
+                    toggleUploadForm(); // Hide form
+                    loadFileList(); // Refresh file list
+                } else {
+                    showMessage('Erro ao enviar arquivo(s)', false);
+                }
+            });
+            
+            // Handle errors
+            xhr.addEventListener('error', function() {
+                showMessage('Erro ao enviar arquivo(s)', false);
+            });
+            
+            // Send request
+            xhr.open('POST', '/api/upload');
+            xhr.send(formData);
+        }
+        
+        // Server management functions
+        function loadServerStatus() {
+            fetch('/api/server/status')
+                .then(response => response.json())
+                .then(data => {
+                    updateStatusDisplay(data);
+                    
+                    // If console modal is open, also update its status
+                    if (isConsoleOpen) {
+                        updateModalStatusDisplay(data);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading server status:', error);
+                });
+        }
+        
+        function updateStatusDisplay(data) {
+            const statusText = document.getElementById('statusText');
+            const uptime = document.getElementById('uptime');
+            const statusIndicator = document.getElementById('statusIndicator');
+            
+            if (data.running) {
+                statusText.textContent = 'Rodando';
+                statusIndicator.className = 'status-indicator running';
+                uptime.textContent = `Uptime: ${formatUptime(data.uptime)}`;
+            } else {
+                statusText.textContent = 'Parado';
+                statusIndicator.className = 'status-indicator stopped';
+                uptime.textContent = '';
+            }
+        }
+        
+        function updateModalStatusDisplay(data) {
+            const statusText = document.getElementById('modalStatusText');
+            const uptime = document.getElementById('modalUptime');
+            const statusIndicator = document.getElementById('modalStatusIndicator');
+            
+            if (data.running) {
+                statusText.textContent = 'Rodando';
+                statusIndicator.className = 'status-indicator running';
+                uptime.textContent = `Uptime: ${formatUptime(data.uptime)}`;
+            } else {
+                statusText.textContent = 'Parado';
+                statusIndicator.className = 'status-indicator stopped';
+                uptime.textContent = '';
+            }
+        }
+        
+        function formatUptime(seconds) {
+            if (seconds < 60) {
+                return `${seconds} segundos`;
+            } else if (seconds < 3600) {
+                return `${Math.floor(seconds / 60)} minutos`;
+            } else {
+                return `${Math.floor(seconds / 3600)} horas`;
+            }
+        }
+        
+        function startServer() {
+            fetch('/api/server/start', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                showMessage(data.message);
+                loadServerStatus();
+            })
+            .catch(error => {
+                console.error('Error starting server:', error);
+                showMessage('Erro ao iniciar o servidor', false);
+            });
+        }
+        
+        function stopServer() {
+            if (!confirm('Tem certeza que deseja parar o servidor?')) {
+                return;
+            }
+            
+            fetch('/api/server/stop', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                showMessage(data.message);
+                loadServerStatus();
+            })
+            .catch(error => {
+                console.error('Error stopping server:', error);
+                showMessage('Erro ao parar o servidor', false);
+            });
+        }
+        
+        function restartServer() {
+            if (!confirm('Tem certeza que deseja reiniciar o servidor?')) {
+                return;
+            }
+            
+            fetch('/api/server/restart', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                showMessage(data.message);
+                loadServerStatus();
+            })
+            .catch(error => {
+                console.error('Error restarting server:', error);
+                showMessage('Erro ao reiniciar o servidor', false);
+            });
+        }
+        
+        function openConsoleModal() {
+            const consoleModal = document.getElementById('consoleModal');
+            consoleModal.style.display = 'block';
+            isConsoleOpen = true;
+            
+            // Load console and status immediately
+            loadServerConsole();
+            loadServerStatus();
+            
+            // Set up automatic console refresh
+            if (consoleInterval) {
+                clearInterval(consoleInterval);
+            }
+            consoleInterval = setInterval(loadServerConsole, 5000);
+        }
+        
+        function closeConsoleModal() {
+            const consoleModal = document.getElementById('consoleModal');
+            consoleModal.style.display = 'none';
+            isConsoleOpen = false;
+            
+            // Clear console refresh interval
+            if (consoleInterval) {
+                clearInterval(consoleInterval);
+                consoleInterval = null;
+            }
+        }
+        
+        function loadServerConsole() {
+            if (!isConsoleOpen) return;
+            
+            fetch('/api/server/console')
+                .then(response => response.json())
+                .then(data => {
+                    const consoleDiv = document.getElementById('serverConsole');
+                    consoleDiv.innerHTML = '';
+                    
+                    data.logs.forEach(line => {
+                        const lineElement = document.createElement('p');
+                        lineElement.className = 'console-line';
+                        lineElement.textContent = line;
+                        consoleDiv.appendChild(lineElement);
+                    });
+                    
+                    // Scroll to bottom
+                    consoleDiv.scrollTop = consoleDiv.scrollHeight;
+                })
+                .catch(error => {
+                    console.error('Error loading server console:', error);
+                });
+        }
+    </script>
+</body>
+</html>
