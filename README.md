@@ -28,6 +28,20 @@ Um aplicativo web para gerenciar servidores Minecraft locais, com recursos para 
 
 ## Instalação
 
+### Método 1: Script Automático (Recomendado)
+
+#### Linux/macOS:
+```bash
+./setup.sh
+```
+
+#### Windows:
+```cmd
+setup.bat
+```
+
+### Método 2: Instalação Manual
+
 1. Clone o repositório:
    ```
    git clone <repository-url>
@@ -44,6 +58,20 @@ Um aplicativo web para gerenciar servidores Minecraft locais, com recursos para 
    ```
 
 ## Uso
+
+### Inicialização com Scripts (Recomendado)
+
+#### Linux/macOS:
+```bash
+./start.sh
+```
+
+#### Windows:
+```cmd
+start.bat
+```
+
+### Inicialização Manual
 
 1. Inicie o servidor:
    ```
@@ -64,6 +92,10 @@ Um aplicativo web para gerenciar servidores Minecraft locais, com recursos para 
 ```
 minecraft-manager/
 ├── server.js              # Servidor principal
+├── setup.sh               # Script de setup automático (Linux/macOS)
+├── setup.bat              # Script de setup automático (Windows)
+├── start.sh               # Script de inicialização (Linux/macOS)
+├── start.bat              # Script de inicialização (Windows)
 ├── package.json           # Dependências e scripts
 ├── users.db               # Banco de dados SQLite (gerado automaticamente)
 ├── public/                # Arquivos estáticos
