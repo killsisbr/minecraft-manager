@@ -636,6 +636,7 @@
                 <button id="restartServerBtn" class="restart-btn">Reiniciar Servidor</button>
                 <button id="refreshStatusBtn">Atualizar Status</button>
                 <button id="consoleBtn" class="console-btn">Abrir Console</button>
+                <button id="backupServerBtn" class="copy-btn">Backup</button>
                 <button id="deleteServerBtn" class="stop-btn">Excluir Servidor</button>
             </div>
         </div>
@@ -783,6 +784,7 @@
             document.getElementById('confirmCreateServerBtn').addEventListener('click', createServer);
             document.getElementById('cancelCreateServerBtn').addEventListener('click', hideCreateServerForm);
             document.getElementById('deleteServerBtn').addEventListener('click', deleteServer);
+            document.getElementById('backupServerBtn').addEventListener('click', createServerBackup);
             
             // Event listeners for file management
             document.getElementById('refreshBtn').addEventListener('click', loadFileList);

@@ -1367,6 +1367,45 @@ app.get('/api/servers/:serverName/console', isAuthenticated, (req, res) => {
     });
 });
 
+// Create server backup
+app.post('/api/servers/:serverName/backup', isAuthenticated, async (req, res) => {
+  try {
+    const { serverName } = req.params;
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    const backupsDir = path.join(__dirname, 'backups');
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
+    }
+    
+    // Create backups directory if it doesn't exist
+    if (!fs.existsSync(backupsDir)) {
+      await mkdir(backupsDir, { recursive: true });
+    }
+    
+    // Generate backup filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFilename = `${serverName}-backup-${timestamp}.zip`;
+    const backupPath = path.join(backupsDir, backupFilename);
+    
+    // Create ZIP archive of the server directory
+    const zip = new AdmZip();
+    zip.addLocalFolder(serverPath);
+    zip.writeZip(backupPath);
+    
+    res.json({ 
+      message: 'Backup created successfully',
+      filename: backupFilename,
+      path: backupPath
+    });
+  } catch (error) {
+    console.error('Error creating backup:', error);
+    res.status(500).json({ error: 'Failed to create backup' });
+  }
+});
+
 // Send command to Minecraft server
 app.post('/api/servers/:serverName/command', isAuthenticated, (req, res) => {
   const { serverName } = req.params;
