@@ -37,7 +37,6 @@ build/
 *.db.*
 
 # Arquivos de ambiente
-.env
 .env.local
 .env.*.local
 

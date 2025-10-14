@@ -348,6 +348,7 @@
             </div>
             
             <button id="createServerBtn">Criar Novo Servidor</button>
+            <button id="nhudvpsBtn" style="background-color: #673AB7; margin-left: 10px;">Acessar nHudVps</button>
             
             <div class="create-server-form" id="createServerForm" style="display: none;">
                 <h3>Criar Novo Servidor</h3>
@@ -497,6 +498,51 @@
     </div>
     <div id="renameDialogOverlay" class="overlay" style="display: none;"></div>
 
+    <!-- nHudVps Menu Modal -->
+    <div id="nhudvpsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Menu nHudVps</h2>
+                <span class="close" id="nhudvpsClose">&times;</span>
+            </div>
+            <div class="toolbar">
+                <button id="refreshNhudvpsBtn">Atualizar</button>
+                <button id="newNhudvpsFolderBtn">Nova Pasta</button>
+                <button id="uploadNhudvpsBtn">Importar Arquivo</button>
+            </div>
+            <div id="nhudvpsMessage"></div>
+            <div class="breadcrumb" id="nhudvpsBreadcrumb">
+                <!-- Breadcrumb will be populated here -->
+            </div>
+            <table class="file-list">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Tipo</th>
+                        <th>Tamanho</th>
+                        <th>Data de modificação</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="nhudvpsFileList">
+                    <!-- File list will be populated here -->
+                </tbody>
+            </table>
+            
+            <div class="upload-form" id="nhudvpsUploadForm" style="display: none;">
+                <h3>Importar Arquivo</h3>
+                <form id="nhudvpsFileUploadForm">
+                    <input type="file" id="nhudvpsFileInput" multiple>
+                    <button type="submit">Enviar</button>
+                    <button type="button" id="cancelNhudvpsUploadBtn">Cancelar</button>
+                </form>
+                <div class="progress-bar" id="nhudvpsProgressBar" style="display: none;">
+                    <div class="progress-bar-fill" id="nhudvpsProgressBarFill"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Current server
         let currentServer = null;
@@ -514,6 +560,10 @@
         let currentOperation = null;
         // Track copied items
         let clipboard = [];
+        // Current nHudVps path
+        let currentNhudvpsPath = '';
+        // Current nHudvps special directory
+        let currentNhudvpsSpecialDir = '';
         
         // File management functionality
         document.addEventListener('DOMContentLoaded', function() {
@@ -525,6 +575,7 @@
             document.getElementById('confirmCreateServerBtn').addEventListener('click', createServer);
             document.getElementById('cancelCreateServerBtn').addEventListener('click', hideCreateServerForm);
             document.getElementById('deleteServerBtn').addEventListener('click', deleteServer);
+            document.getElementById('nhudvpsBtn').addEventListener('click', openNhudvpsMenu);
             
             // Event listeners for file management
             document.getElementById('refreshBtn').addEventListener('click', loadFileList);
@@ -548,6 +599,14 @@
             document.getElementById('cancelRenameBtn').addEventListener('click', closeRenameDialog);
             document.getElementById('renameDialogOverlay').addEventListener('click', closeRenameDialog);
             
+            // Event listeners for nHudVps menu
+            document.getElementById('nhudvpsClose').addEventListener('click', closeNhudvpsMenu);
+            document.getElementById('refreshNhudvpsBtn').addEventListener('click', loadNhudvpsFileList);
+            document.getElementById('newNhudvpsFolderBtn').addEventListener('click', createNewNhudvpsFolder);
+            document.getElementById('uploadNhudvpsBtn').addEventListener('click', toggleNhudvpsUploadForm);
+            document.getElementById('cancelNhudvpsUploadBtn').addEventListener('click', toggleNhudvpsUploadForm);
+            document.getElementById('nhudvpsFileUploadForm').addEventListener('submit', handleNhudvpsFileUpload);
+            
             // Event listeners for server controls
             document.getElementById('startServerBtn').addEventListener('click', startServer);
             document.getElementById('stopServerBtn').addEventListener('click', stopServer);
@@ -564,6 +623,7 @@
             // Modal functionality
             const consoleModal = document.getElementById('consoleModal');
             const editModal = document.getElementById('editModal');
+            const nhudvpsModal = document.getElementById('nhudvpsModal');
             const consoleClose = consoleModal.querySelector('.close');
             const editClose = editModal.querySelector('.close');
             
@@ -581,6 +641,9 @@
                 }
                 if (event.target == editModal) {
                     editModal.style.display = 'none';
+                }
+                if (event.target == nhudvpsModal) {
+                    closeNhudvpsMenu();
                 }
             };
             
@@ -1706,6 +1769,347 @@
                     console.error('Error loading server console:', error);
                 });
         }
+        
+        // nHudVps menu functions
+        function openNhudvpsMenu() {
+            const nhudvpsModal = document.getElementById('nhudvpsModal');
+            nhudvpsModal.style.display = 'block';
+            
+            // Load nHudVps menu items
+            loadNhudvpsMenuItems();
+        }
+        
+        function closeNhudvpsMenu() {
+            const nhudvpsModal = document.getElementById('nhudvpsModal');
+            nhudvpsModal.style.display = 'none';
+            currentNhudvpsPath = '';
+            currentNhudvpsSpecialDir = '';
+        }
+        
+        function loadNhudvpsMenuItems() {
+            fetch('/api/nhudvps/menu')
+                .then(response => response.json())
+                .then(menuItems => {
+                    const fileList = document.getElementById('nhudvpsFileList');
+                    fileList.innerHTML = '';
+                    
+                    menuItems.forEach(item => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td><a href="#" onclick="enterNhudvpsDirectory('${item.name}', '${item.path}')">${item.name}</a></td>
+                            <td>${item.type}</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td class="file-actions">
+                                <button onclick="accessNhudvpsDirectory('${item.name}', '${item.path}')" style="background-color: #4CAF50;">Acessar</button>
+                            </td>
+                        `;
+                        fileList.appendChild(row);
+                    });
+                    
+                    // Clear breadcrumb
+                    document.getElementById('nhudvpsBreadcrumb').innerHTML = '<a href="#" onclick="loadNhudvpsMenuItems()">nHudVps</a>';
+                })
+                .catch(error => {
+                    console.error('Error loading nHudVps menu:', error);
+                    showMessage('Erro ao carregar o menu nHudVps', false, 'nhudvpsMessage');
+                });
+        }
+        
+        function enterNhudvpsDirectory(name, path) {
+            currentNhudvpsSpecialDir = name;
+            currentNhudvpsPath = path;
+            loadNhudvpsFileList();
+        }
+        
+        function accessNhudvpsDirectory(name, path) {
+            currentNhudvpsSpecialDir = name;
+            currentNhudvpsPath = path;
+            loadNhudvpsFileList();
+        }
+        
+        function updateNhudvpsBreadcrumb() {
+            const breadcrumb = document.getElementById('nhudvpsBreadcrumb');
+            breadcrumb.innerHTML = '';
+            
+            // Add home link
+            const homeLink = document.createElement('a');
+            homeLink.href = '#';
+            homeLink.textContent = 'nHudVps';
+            homeLink.onclick = function(e) {
+                e.preventDefault();
+                loadNhudvpsMenuItems();
+            };
+            breadcrumb.appendChild(homeLink);
+            
+            // Add current special directory
+            if (currentNhudvpsSpecialDir) {
+                const separator = document.createElement('span');
+                separator.textContent = ' > ';
+                breadcrumb.appendChild(separator);
+                
+                const dirLink = document.createElement('a');
+                dirLink.href = '#';
+                dirLink.textContent = currentNhudvpsSpecialDir;
+                dirLink.onclick = function(e) {
+                    e.preventDefault();
+                    loadNhudvpsFileList();
+                };
+                breadcrumb.appendChild(dirLink);
+            }
+            
+            // Add path segments
+            if (currentNhudvpsPath) {
+                const pathSegments = currentNhudvpsPath.split(/[\/\\]/).filter(segment => segment);
+                let pathSoFar = '';
+                
+                pathSegments.forEach((segment, index) => {
+                    const separator = document.createElement('span');
+                    separator.textContent = ' > ';
+                    breadcrumb.appendChild(separator);
+                    
+                    pathSoFar += (index > 0 ? '/' : '') + segment;
+                    
+                    const link = document.createElement('a');
+                    link.href = '#';
+                    link.textContent = segment;
+                    link.onclick = function(e) {
+                        e.preventDefault();
+                        // This would require a more complex implementation to navigate within the special directory
+                        // For now, we'll keep it simple
+                    };
+                    breadcrumb.appendChild(link);
+                });
+            }
+        }
+        
+        function loadNhudvpsFileList() {
+            if (!currentNhudvpsPath) {
+                loadNhudvpsMenuItems();
+                return;
+            }
+            
+            const url = `/api/files?path=${encodeURIComponent(currentNhudvpsPath)}`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    // Update breadcrumb
+                    updateNhudvpsBreadcrumb();
+                    
+                    const fileList = document.getElementById('nhudvpsFileList');
+                    fileList.innerHTML = '';
+                    
+                    if (data.files && data.files.length === 0) {
+                        fileList.innerHTML = '<tr><td colspan="5">Nenhum arquivo encontrado</td></tr>';
+                        return;
+                    }
+                    
+                    if (data.files) {
+                        data.files.forEach(file => {
+                            const row = document.createElement('tr');
+                            if (file.type === 'Pasta') {
+                                row.innerHTML = `
+                                    <td><a href="#" onclick="enterNhudvpsSubDirectory('${file.name}')">${file.name}</a></td>
+                                    <td>${file.type}</td>
+                                    <td>${file.size}</td>
+                                    <td>${file.modified}</td>
+                                    <td class="file-actions">
+                                        <button onclick="viewNhudvpsFolder('${file.name}')" style="background-color: #FF9800;">Visualizar</button>
+                                        <button onclick="deleteNhudvpsFile('${file.name}', 'Pasta')" style="background-color: #f44336;">Apagar</button>
+                                    </td>
+                                `;
+                            } else {
+                                row.innerHTML = `
+                                    <td>${file.name}</td>
+                                    <td>${file.type}</td>
+                                    <td>${file.size}</td>
+                                    <td>${file.modified}</td>
+                                    <td class="file-actions">
+                                        <button onclick="editNhudvpsFile('${file.name}')" class="copy-btn">Editar</button>
+                                        <button onclick="downloadNhudvpsFile('${file.name}')" style="background-color: #2196F3;">Baixar</button>
+                                        <button onclick="deleteNhudvpsFile('${file.name}', 'Arquivo')" style="background-color: #f44336;">Apagar</button>
+                                    </td>
+                                `;
+                            }
+                            fileList.appendChild(row);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading nHudVps file list:', error);
+                    showMessage('Erro ao carregar a lista de arquivos', false, 'nhudvpsMessage');
+                });
+        }
+        
+        function enterNhudvpsSubDirectory(dirname) {
+            // This would require a more complex implementation to navigate within the special directory
+            // For now, we'll keep it simple and just show a message
+            showMessage('Navegação em subdiretórios não implementada para nHudVps', false, 'nhudvpsMessage');
+        }
+        
+        function viewNhudvpsFolder(foldername) {
+            // This would require a more complex implementation to navigate within the special directory
+            // For now, we'll keep it simple and just show a message
+            showMessage('Visualização de pastas não implementada para nHudVps', false, 'nhudvpsMessage');
+        }
+        
+        function editNhudvpsFile(filename) {
+            const url = `/api/files/content?filePath=${encodeURIComponent(currentNhudvpsPath + '/' + filename)}`;
+                
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('File not found');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    document.getElementById('editingFilename').textContent = filename;
+                    document.getElementById('fileContent').value = data.content;
+                    document.getElementById('editModal').style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error loading file:', error);
+                    showMessage(`Erro ao carregar o arquivo ${filename}`, false, 'nhudvpsMessage');
+                });
+        }
+        
+        function downloadNhudvpsFile(filename) {
+            // Create a temporary link to trigger download
+            const url = `/api/download?filePath=${encodeURIComponent(currentNhudvpsPath + '/' + filename)}`;
+                
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        function deleteNhudvpsFile(filename, type) {
+            if (!confirm(`Tem certeza que deseja apagar ${type === 'Pasta' ? 'a pasta' : 'o arquivo'} ${filename}?`)) {
+                return;
+            }
+            
+            const url = `/api/files?filePath=${encodeURIComponent(currentNhudvpsPath + '/' + filename)}`;
+                
+            fetch(url, {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to delete file');
+                }
+                return response.json();
+            })
+            .then(data => {
+                showMessage(`${type === 'Pasta' ? 'Pasta' : 'Arquivo'} apagado com sucesso!`, true, 'nhudvpsMessage');
+                loadNhudvpsFileList(); // Refresh file list
+            })
+            .catch(error => {
+                console.error('Error deleting file:', error);
+                showMessage(`Erro ao apagar ${type === 'Pasta' ? 'a pasta' : 'o arquivo'} ${filename}`, false, 'nhudvpsMessage');
+            });
+        }
+        
+        function createNewNhudvpsFolder() {
+            const folderName = prompt('Nome da nova pasta:');
+            if (!folderName) return;
+            
+            const fullPath = currentNhudvpsPath ? `${currentNhudvpsPath}/${folderName}` : folderName;
+            
+            fetch('/api/directories', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    path: fullPath
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to create directory');
+                }
+                return response.json();
+            })
+            .then(data => {
+                showMessage('Pasta criada com sucesso!', true, 'nhudvpsMessage');
+                loadNhudvpsFileList(); // Refresh file list
+            })
+            .catch(error => {
+                console.error('Error creating directory:', error);
+                showMessage(`Erro ao criar a pasta "${folderName}"`, false, 'nhudvpsMessage');
+            });
+        }
+        
+        function toggleNhudvpsUploadForm() {
+            const form = document.getElementById('nhudvpsUploadForm');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+            // Reset form when showing
+            if (form.style.display === 'block') {
+                document.getElementById('nhudvpsFileInput').value = '';
+                document.getElementById('nhudvpsProgressBar').style.display = 'none';
+            }
+        }
+        
+        function handleNhudvpsFileUpload(e) {
+            e.preventDefault();
+            const fileInput = document.getElementById('nhudvpsFileInput');
+            const files = fileInput.files;
+            
+            if (files.length === 0) {
+                showMessage('Por favor, selecione pelo menos um arquivo para enviar.', false, 'nhudvpsMessage');
+                return;
+            }
+            
+            // Show progress bar
+            const progressBar = document.getElementById('nhudvpsProgressBar');
+            const progressBarFill = document.getElementById('nhudvpsProgressBarFill');
+            progressBar.style.display = 'block';
+            progressBarFill.style.width = '0%';
+            
+            // Create FormData object
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('file', files[i]);
+            }
+            formData.append('path', currentNhudvpsPath);
+            
+            // Create XMLHttpRequest for progress tracking
+            const xhr = new XMLHttpRequest();
+            
+            // Update progress bar
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressBarFill.style.width = percentComplete + '%';
+                }
+            });
+            
+            // Handle completion
+            xhr.addEventListener('load', function() {
+                if (xhr.status === 200) {
+                    const response = JSON.parse(xhr.responseText);
+                    showMessage(response.message || 'Arquivo(s) enviado(s) com sucesso!', true, 'nhudvpsMessage');
+                    toggleNhudvpsUploadForm(); // Hide form
+                    loadNhudvpsFileList(); // Refresh file list
+                } else {
+                    showMessage('Erro ao enviar arquivo(s)', false, 'nhudvpsMessage');
+                }
+            });
+            
+            // Handle errors
+            xhr.addEventListener('error', function() {
+                showMessage('Erro ao enviar arquivo(s)', false, 'nhudvpsMessage');
+            });
+            
+            // Send request
+            xhr.open('POST', '/api/upload');
+            xhr.send(formData);
+        }
     </script>
 </body>
+</html>
 </html>
