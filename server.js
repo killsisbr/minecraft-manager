@@ -1406,6 +1406,55 @@ app.post('/api/servers/:serverName/backup', isAuthenticated, async (req, res) =>
   }
 });
 
+// Download server as ZIP
+app.get('/api/servers/:serverName/download-zip', isAuthenticated, async (req, res) => {
+  try {
+    const { serverName } = req.params;
+    const serversDir = path.join(__dirname, 'servers');
+    const serverPath = path.join(serversDir, serverName);
+    
+    // Check if server exists
+    if (!fs.existsSync(serverPath)) {
+      return res.status(404).json({ error: 'Server not found' });
+    }
+    
+    // Generate temporary ZIP filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const zipFilename = `${serverName}-${timestamp}.zip`;
+    const tempZipPath = path.join(__dirname, zipFilename);
+    
+    // Create ZIP archive of the server directory
+    const zip = new AdmZip();
+    zip.addLocalFolder(serverPath);
+    zip.writeZip(tempZipPath);
+    
+    // Send the ZIP file for download
+    res.download(tempZipPath, zipFilename, (err) => {
+      if (err) {
+        console.error('Error downloading ZIP file:', err);
+        // Try to send error response if headers haven't been sent
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to download backup' });
+        }
+      }
+      
+      // Clean up temporary ZIP file after download
+      setTimeout(() => {
+        if (fs.existsSync(tempZipPath)) {
+          fs.unlink(tempZipPath, (unlinkErr) => {
+            if (unlinkErr) {
+              console.error('Error deleting temporary ZIP file:', unlinkErr);
+            }
+          });
+        }
+      }, 1000);
+    });
+  } catch (error) {
+    console.error('Error creating download backup:', error);
+    res.status(500).json({ error: 'Failed to create download backup' });
+  }
+});
+
 // Send command to Minecraft server
 app.post('/api/servers/:serverName/command', isAuthenticated, (req, res) => {
   const { serverName } = req.params;

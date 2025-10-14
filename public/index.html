@@ -637,6 +637,7 @@
                 <button id="refreshStatusBtn">Atualizar Status</button>
                 <button id="consoleBtn" class="console-btn">Abrir Console</button>
                 <button id="backupServerBtn" class="copy-btn">Backup</button>
+                <button id="downloadServerBtn" class="extract-btn">Baixar ZIP</button>
                 <button id="deleteServerBtn" class="stop-btn">Excluir Servidor</button>
             </div>
         </div>
@@ -785,6 +786,7 @@
             document.getElementById('cancelCreateServerBtn').addEventListener('click', hideCreateServerForm);
             document.getElementById('deleteServerBtn').addEventListener('click', deleteServer);
             document.getElementById('backupServerBtn').addEventListener('click', createServerBackup);
+            document.getElementById('downloadServerBtn').addEventListener('click', downloadServerZip);
             
             // Event listeners for file management
             document.getElementById('refreshBtn').addEventListener('click', loadFileList);
@@ -1007,6 +1009,69 @@
                     window.location.href = '/login';
                 } else {
                     showMessage('Erro ao excluir servidor', false, 'serverMessage');
+                }
+            });
+        }
+
+        function downloadServerZip() {
+            if (!currentServer) {
+                showMessage('Nenhum servidor selecionado', false, 'serverMessage');
+                return;
+            }
+            
+            // Confirm download
+            if (!confirm(`Tem certeza que deseja baixar o servidor ${currentServer} como arquivo ZIP? Isso pode levar algum tempo dependendo do tamanho do servidor.`)) {
+                return;
+            }
+            
+            // Show loading message
+            showMessage('Criando arquivo ZIP... Isso pode levar alguns minutos.', true, 'serverMessage');
+            
+            // Create and download ZIP
+            const link = document.createElement('a');
+            link.href = `/api/servers/${currentServer}/download-zip`;
+            link.download = `${currentServer}.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Show success message
+            showMessage('Download iniciado! O arquivo ZIP será salvo em sua pasta de downloads.', true, 'serverMessage');
+        }
+
+        function createServerBackup() {
+            if (!currentServer) {
+                showMessage('Nenhum servidor selecionado', false, 'serverMessage');
+                return;
+            }
+            
+            // Confirm backup creation
+            if (!confirm(`Tem certeza que deseja criar um backup do servidor ${currentServer}?`)) {
+                return;
+            }
+            
+            // Show loading message
+            showMessage('Criando backup...', true, 'serverMessage');
+            
+            fetch(`/api/servers/${currentServer}/backup`, {
+                method: 'POST'
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                return response.json();
+            })
+            .then(data => {
+                showMessage(data.message || 'Backup criado com sucesso!', true, 'serverMessage');
+            })
+            .catch(error => {
+                console.error('Error creating backup:', error);
+                if (error instanceof SyntaxError) {
+                    window.location.href = '/login';
+                } else {
+                    showMessage('Erro ao criar backup', false, 'serverMessage');
                 }
             });
         }
