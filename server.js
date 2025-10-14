@@ -1367,6 +1367,55 @@ app.get('/api/servers/:serverName/console', isAuthenticated, (req, res) => {
     });
 });
 
+// Send command to Minecraft server
+app.post('/api/servers/:serverName/command', isAuthenticated, (req, res) => {
+  const { serverName } = req.params;
+  const { command } = req.body;
+  
+  if (!command) {
+    return res.status(400).json({ error: 'Command is required' });
+  }
+  
+  pm2.connect((err) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Failed to connect to PM2' });
+    }
+    
+    // Find the server process
+    pm2.list((err, list) => {
+      if (err) {
+        pm2.disconnect();
+        return res.status(500).json({ error: 'Failed to get process list' });
+      }
+      
+      const serverProcess = list.find(process => process.name === serverName);
+      if (!serverProcess) {
+        pm2.disconnect();
+        return res.status(404).json({ error: 'Server not found or not running' });
+      }
+      
+      // Send command to the process
+      pm2.sendDataToProcessId(serverProcess.pm_id, {
+        type: 'process:msg',
+        data: {
+          command: command
+        },
+        topic: 'command'
+      }, (err, res) => {
+        if (err) {
+          console.error('Error sending command:', err);
+          pm2.disconnect();
+          return res.status(500).json({ error: 'Failed to send command' });
+        }
+        
+        pm2.disconnect();
+        res.json({ message: 'Command sent successfully' });
+      });
+    });
+  });
+});
+
 // Handle favicon.ico request
 app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
