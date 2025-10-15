@@ -636,8 +636,6 @@
                 <button id="restartServerBtn" class="restart-btn">Reiniciar Servidor</button>
                 <button id="refreshStatusBtn">Atualizar Status</button>
                 <button id="consoleBtn" class="console-btn">Abrir Console</button>
-                <button id="backupServerBtn" class="copy-btn">Backup</button>
-                <button id="downloadServerBtn" class="extract-btn">Baixar ZIP</button>
                 <button id="deleteServerBtn" class="stop-btn">Excluir Servidor</button>
             </div>
         </div>
@@ -686,6 +684,7 @@
                 <div class="progress-bar-fill" id="progressBarFill"></div>
             </div>
         </div>
+        </div>
     </div>
 
     <!-- Server Console Modal -->
@@ -709,10 +708,6 @@
             </div>
             <div id="serverConsole" class="console">
                 <!-- Console logs will be populated here -->
-            </div>
-            <div style="margin-top: 1rem; display: flex;">
-                <input type="text" id="consoleCommandInput" placeholder="Digite um comando..." style="flex: 1; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background-color: var(--bg-secondary); color: var(--text-primary);">
-                <button id="sendCommandBtn" style="margin-left: 0.5rem; padding: 0.5rem 1rem; background-color: var(--btn-primary); color: #000; border: none; border-radius: 4px; cursor: pointer;">Enviar</button>
             </div>
         </div>
     </div>
@@ -757,6 +752,8 @@
     </div>
     <div id="renameDialogOverlay" class="overlay" style="display: none;"></div>
 
+    <!-- nHudVps functionality removed -->
+
     <script>
         // Current server
         let currentServer = null;
@@ -774,6 +771,10 @@
         let currentOperation = null;
         // Track copied items
         let clipboard = [];
+        // Current nHudVps path
+        let currentNhudvpsPath = '';
+        // Current nHudvps special directory
+        let currentNhudvpsSpecialDir = '';
         
         // File management functionality
         document.addEventListener('DOMContentLoaded', function() {
@@ -785,8 +786,6 @@
             document.getElementById('confirmCreateServerBtn').addEventListener('click', createServer);
             document.getElementById('cancelCreateServerBtn').addEventListener('click', hideCreateServerForm);
             document.getElementById('deleteServerBtn').addEventListener('click', deleteServer);
-            document.getElementById('backupServerBtn').addEventListener('click', createServerBackup);
-            document.getElementById('downloadServerBtn').addEventListener('click', downloadServerZip);
             
             // Event listeners for file management
             document.getElementById('refreshBtn').addEventListener('click', loadFileList);
@@ -822,14 +821,859 @@
             document.getElementById('modalStopServerBtn').addEventListener('click', stopServer);
             document.getElementById('modalRestartServerBtn').addEventListener('click', restartServer);
             document.getElementById('modalRefreshStatusBtn').addEventListener('click', loadServerStatus);
-            document.getElementById('sendCommandBtn').addEventListener('click', sendConsoleCommand);
             
-            // Add event listener for Enter key in command input
-            document.getElementById('consoleCommandInput').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    sendConsoleCommand();
+            // Modal functionality
+            const consoleModal = document.getElementById('consoleModal');
+            const editModal = document.getElementById('editModal');
+            const consoleClose = consoleModal.querySelector('.close');
+            const editClose = editModal.querySelector('.close');
+            
+            consoleClose.onclick = function() {
+                closeConsoleModal();
+            };
+            
+            editClose.onclick = function() {
+                editModal.style.display = 'none';
+            };
+            
+            window.onclick = function(event) {
+                if (event.target == consoleModal) {
+                    closeConsoleModal();
                 }
-            });
+                if (event.target == editModal) {
+                    editModal.style.display = 'none';
+                }
+            };
+            
+            // Save file button
+            document.getElementById('saveFileBtn').addEventListener('click', saveFile);
+            document.getElementById('downloadFileBtn').addEventListener('click', downloadCurrentFile);
+</original_code>```
+
+```
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Server Manager</title>
+    <style>
+        :root {
+            /* Dark theme colors */
+            --bg-primary: #121212;
+            --bg-secondary: #1e1e1e;
+            --bg-tertiary: #2d2d2d;
+            --bg-card: #252526;
+            --bg-modal: #1e1e1e;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --text-accent: #bb86fc;
+            --border-color: #333333;
+            --success: #4caf50;
+            --warning: #ff9800;
+            --error: #f44336;
+            --info: #2196f3;
+            
+            /* Button colors */
+            --btn-primary: #bb86fc;
+            --btn-primary-hover: #d0bcff;
+            --btn-success: #03dac6;
+            --btn-success-hover: #03dac6;
+            --btn-warning: #ff9800;
+            --btn-warning-hover: #ffa726;
+            --btn-error: #cf6679;
+            --btn-error-hover: #d97a8a;
+            --btn-info: #2196f3;
+            --btn-info-hover: #42a5f5;
+            
+            /* Minecraft colors */
+            --minecraft-green: #7bc242;
+            --minecraft-dirt: #966f4c;
+            --minecraft-stone: #888c8d;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+        
+        header {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            background: linear-gradient(90deg, var(--minecraft-green), var(--btn-primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+        
+        .server-manager, .file-manager {
+            background-color: var(--bg-card);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border-color);
+        }
+        
+        .server-manager h2, .file-manager h2 {
+            margin-top: 0;
+            color: var(--text-accent);
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+        
+        .toolbar {
+            display: flex;
+            gap: 0.8rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        button {
+            padding: 0.6rem 1.2rem;
+            background-color: var(--btn-primary);
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        
+        button:hover {
+            background-color: var(--btn-primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .server-controls button {
+            margin-right: 0.5rem;
+        }
+        
+        .stop-btn {
+            background-color: var(--btn-error);
+        }
+        
+        .stop-btn:hover {
+            background-color: var(--btn-error-hover);
+        }
+        
+        .restart-btn {
+            background-color: var(--btn-warning);
+        }
+        
+        .restart-btn:hover {
+            background-color: var(--btn-warning-hover);
+        }
+        
+        .console-btn {
+            background-color: var(--btn-info);
+        }
+        
+        .console-btn:hover {
+            background-color: var(--btn-info-hover);
+        }
+        
+        .move-btn {
+            background-color: var(--btn-primary);
+        }
+        
+        .move-btn:hover {
+            background-color: var(--btn-primary-hover);
+        }
+        
+        .copy-btn {
+            background-color: var(--btn-info);
+        }
+        
+        .copy-btn:hover {
+            background-color: var(--btn-info-hover);
+        }
+        
+        .paste-btn {
+            background-color: var(--btn-warning);
+        }
+        
+        .paste-btn:hover {
+            background-color: var(--btn-warning-hover);
+        }
+        
+        .rename-btn {
+            background-color: var(--btn-success);
+        }
+        
+        .rename-btn:hover {
+            background-color: var(--btn-success-hover);
+        }
+        
+        .file-list {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--bg-secondary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .file-list th, .file-list td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .file-list th {
+            background-color: var(--bg-tertiary);
+            color: var(--text-accent);
+            font-weight: 600;
+        }
+        
+        .file-list tbody tr:hover {
+            background-color: rgba(187, 134, 252, 0.1);
+        }
+        
+        .file-actions button {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.875rem;
+            margin-right: 0.3rem;
+            margin-bottom: 0.3rem;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal-content {
+            background-color: var(--bg-modal);
+            margin: 5% auto;
+            padding: 25px;
+            border: 1px solid var(--border-color);
+            width: 85%;
+            max-width: 900px;
+            border-radius: 8px;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .modal-header h2 {
+            margin: 0;
+            color: var(--text-accent);
+        }
+        
+        .close {
+            color: var(--text-secondary);
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        
+        .close:hover {
+            color: var(--text-primary);
+        }
+        
+        .error {
+            color: var(--error);
+            background-color: rgba(207, 102, 121, 0.1);
+            padding: 0.8rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+            border-left: 4px solid var(--error);
+        }
+        
+        .success {
+            color: var(--success);
+            background-color: rgba(76, 175, 80, 0.1);
+            padding: 0.8rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+            border-left: 4px solid var(--success);
+        }
+        
+        .breadcrumb {
+            margin-bottom: 1.5rem;
+            padding: 0.8rem;
+            background-color: var(--bg-secondary);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .breadcrumb a {
+            color: var(--btn-primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+        }
+        
+        .breadcrumb a:hover {
+            text-decoration: underline;
+        }
+        
+        .breadcrumb span {
+            margin: 0 0.5rem;
+            color: var(--text-secondary);
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 12px;
+            background-color: var(--bg-tertiary);
+            border-radius: 6px;
+            overflow: hidden;
+            margin-top: 15px;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--btn-primary), var(--btn-info));
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .server-status {
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+        
+        .server-status.running {
+            background-color: rgba(3, 218, 198, 0.15);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+        
+        .server-status.stopped {
+            background-color: rgba(207, 102, 121, 0.15);
+            color: var(--error);
+            border: 1px solid var(--error);
+        }
+        
+        .console {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 1rem;
+            border-radius: 4px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin-top: 1rem;
+            border: 1px solid var(--border-color);
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        .console-line {
+            margin: 0;
+            line-height: 1.4;
+            font-size: 0.9rem;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-indicator.running {
+            background-color: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+        
+        .status-indicator.stopped {
+            background-color: var(--error);
+        }
+        
+        .extract-btn {
+            background-color: #9c27b0;
+        }
+        
+        .extract-btn:hover {
+            background-color: #ab47bc;
+        }
+        
+        .select-all-checkbox {
+            margin-right: 10px;
+        }
+        
+        .file-checkbox {
+            margin-right: 10px;
+        }
+        
+        .move-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-modal);
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 1001;
+            width: 85%;
+            max-width: 500px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .move-dialog input, .move-dialog select {
+            width: 100%;
+            padding: 10px;
+            margin: 12px 0;
+            box-sizing: border-box;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+        }
+        
+        .move-dialog button {
+            margin-right: 10px;
+            padding: 0.6rem 1.2rem;
+        }
+        
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+        }
+        
+        .server-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .server-card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.2rem;
+            width: 220px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .server-card:hover {
+            background-color: var(--bg-tertiary);
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.3);
+            border-color: var(--btn-primary);
+        }
+        
+        .server-card.selected {
+            background-color: rgba(187, 134, 252, 0.2);
+            border-color: var(--btn-primary);
+            box-shadow: 0 0 15px rgba(187, 134, 252, 0.3);
+        }
+        
+        .server-card h3 {
+            margin-top: 0;
+            color: var(--text-accent);
+        }
+        
+        .create-server-form {
+            margin-top: 1.5rem;
+            padding: 1.5rem;
+            background-color: var(--bg-secondary);
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .create-server-form input {
+            padding: 0.8rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            margin-right: 0.5rem;
+            width: 300px;
+        }
+        
+        .rename-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-modal);
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 1001;
+            width: 85%;
+            max-width: 500px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .rename-dialog input {
+            width: 100%;
+            padding: 10px;
+            margin: 12px 0;
+            box-sizing: border-box;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+        }
+        
+        textarea {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            padding: 1rem;
+            font-family: 'Consolas', 'Courier New', monospace;
+        }
+        
+        input[type="file"] {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            padding: 0.5rem;
+        }
+        
+        select {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            padding: 0.5rem;
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--btn-primary);
+            border-radius: 5px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--btn-primary-hover);
+        }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .toolbar button {
+                margin-bottom: 0.5rem;
+            }
+            
+            .server-card {
+                width: 100%;
+            }
+            
+            .container {
+                padding: 0 0.5rem;
+            }
+            
+            header {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            header div {
+                margin-top: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Minecraft Server Manager</h1>
+        <div>
+            <span>Bem-vindo, <strong id="username">Usuário</strong></span>
+            <a href="/logout" style="margin-left: 1rem; color: #ff6b6b;">Sair</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Server Selection Section -->
+        <div class="server-manager">
+            <h2>Servidores</h2>
+            
+            <div class="server-list" id="serverList">
+                <!-- Server cards will be populated here -->
+            </div>
+            
+            <button id="createServerBtn">Criar Novo Servidor</button>
+            
+            <div class="create-server-form" id="createServerForm" style="display: none;">
+                <h3>Criar Novo Servidor</h3>
+                <input type="text" id="serverNameInput" placeholder="Nome do servidor" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; margin-right: 0.5rem;">
+                <button id="confirmCreateServerBtn">Criar</button>
+                <button id="cancelCreateServerBtn">Cancelar</button>
+            </div>
+            
+            <div id="serverMessage"></div>
+        </div>
+        
+        <!-- Selected Server Section -->
+        <div class="server-manager" id="selectedServerSection" style="display: none;">
+            <h2 id="selectedServerName">Servidor</h2>
+            
+            <div>
+                Status: 
+                <span id="statusIndicator" class="status-indicator stopped"></span>
+                <span id="statusText">Desconhecido</span>
+                <span id="uptime" style="margin-left: 1rem;"></span>
+            </div>
+            
+            <div class="server-controls">
+                <button id="startServerBtn">Iniciar Servidor</button>
+                <button id="stopServerBtn" class="stop-btn">Parar Servidor</button>
+                <button id="restartServerBtn" class="restart-btn">Reiniciar Servidor</button>
+                <button id="refreshStatusBtn">Atualizar Status</button>
+                <button id="consoleBtn" class="console-btn">Abrir Console</button>
+                <button id="deleteServerBtn" class="stop-btn">Excluir Servidor</button>
+            </div>
+        </div>
+        
+        <!-- File Manager Section -->
+        <div class="file-manager" id="fileManagerSection" style="display: none;">
+            <h2>Gerenciador de Arquivos</h2>
+            
+            <div class="breadcrumb" id="breadcrumb">
+                <!-- Breadcrumb will be populated here -->
+            </div>
+            
+            <div class="toolbar">
+                <button id="refreshBtn">Atualizar</button>
+                <button id="newFolderBtn">Nova Pasta</button>
+                <button id="uploadBtn">Importar Arquivo</button>
+                <input type="file" id="hiddenFileInput" multiple style="display: none;">
+                <button id="copyBtn" class="copy-btn" style="display: none;">Copiar</button>
+                <button id="pasteBtn" class="paste-btn" style="display: none;">Colar</button>
+                <button id="moveSelectedBtn" class="move-btn" style="display: none;">Mover</button>
+                <button id="deleteSelectedBtn" class="stop-btn" style="display: none;">Apagar Selecionados</button>
+                <input type="text" id="destinationPath" placeholder="Caminho de destino" style="display: none; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                <button id="confirmOperationBtn" class="move-btn" style="display: none;">Confirmar</button>
+                <button id="cancelOperationBtn" style="display: none;">Cancelar</button>
+            </div>
+            
+            <div id="message"></div>
+
+            <table class="file-list">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="selectAllCheckbox" class="select-all-checkbox"></th>
+                        <th>Nome</th>
+                        <th>Tipo</th>
+                        <th>Tamanho</th>
+                        <th>Data de modificação</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="fileList">
+                    <!-- File list will be populated here -->
+                </tbody>
+            </table>
+            
+            <div class="progress-bar" id="progressBar" style="display: none;">
+                <div class="progress-bar-fill" id="progressBarFill"></div>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <!-- Server Console Modal -->
+    <div id="consoleModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Console do Servidor <span id="consoleServerName"></span></h2>
+                <span class="close">&times;</span>
+            </div>
+            <div>
+                Status: 
+                <span id="modalStatusIndicator" class="status-indicator stopped"></span>
+                <span id="modalStatusText">Desconhecido</span>
+                <span id="modalUptime" style="margin-left: 1rem;"></span>
+            </div>
+            <div class="server-controls" style="margin: 1rem 0;">
+                <button id="modalStartServerBtn">Iniciar</button>
+                <button id="modalStopServerBtn" class="stop-btn">Parar</button>
+                <button id="modalRestartServerBtn" class="restart-btn">Reiniciar</button>
+                <button id="modalRefreshStatusBtn">Atualizar</button>
+            </div>
+            <div id="serverConsole" class="console">
+                <!-- Console logs will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit YAML Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Editar Arquivo <span id="editingFilename"></span></h2>
+                <span class="close">&times;</span>
+            </div>
+            <textarea id="fileContent" rows="20" cols="60" style="width: 100%;"></textarea>
+            <br><br>
+            <button id="saveFileBtn">Salvar</button>
+            <button id="downloadFileBtn" style="background-color: #2196F3;">Baixar</button>
+        </div>
+    </div>
+
+    <!-- Move/Copy Dialog -->
+    <div id="operationDialog" class="move-dialog" style="display: none;">
+        <h3 id="operationDialogTitle">Operação</h3>
+        <p>Selecione o destino para <span id="operationFileName"></span>:</p>
+        <select id="destinationSelect">
+            <!-- Options will be populated here -->
+        </select>
+        <div style="margin-top: 20px;">
+            <button id="confirmOperationDialogBtn" class="move-btn">Confirmar</button>
+            <button id="cancelOperationDialogBtn">Cancelar</button>
+        </div>
+    </div>
+    <div id="operationDialogOverlay" class="overlay" style="display: none;"></div>
+
+    <!-- Rename Dialog -->
+    <div id="renameDialog" class="rename-dialog" style="display: none;">
+        <h3>Renomear Item</h3>
+        <p>Novo nome para <span id="renameFileName"></span>:</p>
+        <input type="text" id="newNameInput" style="width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box;">
+        <div style="margin-top: 20px;">
+            <button id="confirmRenameBtn" class="rename-btn">Renomear</button>
+            <button id="cancelRenameBtn">Cancelar</button>
+        </div>
+    </div>
+    <div id="renameDialogOverlay" class="overlay" style="display: none;"></div>
+
+    <!-- nHudVps functionality removed -->
+
+    <script>
+        // Current server
+        let currentServer = null;
+        // Current path in the file system
+        let currentPath = '';
+        // Console refresh interval
+        let consoleInterval = null;
+        // Track if console modal is open
+        let isConsoleOpen = false;
+        // Track selected files for operations
+        let selectedFiles = [];
+        // Track item being operated on
+        let currentItem = null;
+        // Track current operation (copy, move, etc.)
+        let currentOperation = null;
+        // Track copied items
+        let clipboard = [];
+        // Current nHudVps path
+        let currentNhudvpsPath = '';
+        // Current nHudvps special directory
+        let currentNhudvpsSpecialDir = '';
+        
+        // File management functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load server list
+            loadServerList();
+            
+            // Event listeners for server management
+            document.getElementById('createServerBtn').addEventListener('click', showCreateServerForm);
+            document.getElementById('confirmCreateServerBtn').addEventListener('click', createServer);
+            document.getElementById('cancelCreateServerBtn').addEventListener('click', hideCreateServerForm);
+            document.getElementById('deleteServerBtn').addEventListener('click', deleteServer);
+            
+            // Event listeners for file management
+            document.getElementById('refreshBtn').addEventListener('click', loadFileList);
+            document.getElementById('newFolderBtn').addEventListener('click', createNewFolder);
+            document.getElementById('uploadBtn').addEventListener('click', triggerFileSelect);
+            document.getElementById('hiddenFileInput').addEventListener('change', handleFileUpload);
+            document.getElementById('selectAllCheckbox').addEventListener('change', toggleSelectAll);
+            document.getElementById('copyBtn').addEventListener('click', copySelectedFiles);
+            document.getElementById('pasteBtn').addEventListener('click', pasteFiles);
+            document.getElementById('moveSelectedBtn').addEventListener('click', moveSelectedFiles);
+            document.getElementById('deleteSelectedBtn').addEventListener('click', deleteSelectedFiles);
+            document.getElementById('cancelOperationBtn').addEventListener('click', cancelOperation);
+            
+            // Event listeners for operation dialog
+            document.getElementById('confirmOperationDialogBtn').addEventListener('click', confirmOperationDialog);
+            document.getElementById('cancelOperationDialogBtn').addEventListener('click', closeOperationDialog);
+            document.getElementById('operationDialogOverlay').addEventListener('click', closeOperationDialog);
+            
+            // Event listeners for rename dialog
+            document.getElementById('confirmRenameBtn').addEventListener('click', confirmRename);
+            document.getElementById('cancelRenameBtn').addEventListener('click', closeRenameDialog);
+            document.getElementById('renameDialogOverlay').addEventListener('click', closeRenameDialog);
+            
+            // Event listeners for server controls
+            document.getElementById('startServerBtn').addEventListener('click', startServer);
+            document.getElementById('stopServerBtn').addEventListener('click', stopServer);
+            document.getElementById('restartServerBtn').addEventListener('click', restartServer);
+            document.getElementById('refreshStatusBtn').addEventListener('click', loadServerStatus);
+            document.getElementById('consoleBtn').addEventListener('click', openConsoleModal);
+            
+            // Event listeners for console modal
+            document.getElementById('modalStartServerBtn').addEventListener('click', startServer);
+            document.getElementById('modalStopServerBtn').addEventListener('click', stopServer);
+            document.getElementById('modalRestartServerBtn').addEventListener('click', restartServer);
+            document.getElementById('modalRefreshStatusBtn').addEventListener('click', loadServerStatus);
             
             // Modal functionality
             const consoleModal = document.getElementById('consoleModal');
@@ -929,7 +1773,6 @@
             loadFileList();
         }
 
-        
         function showCreateServerForm() {
             document.getElementById('createServerForm').style.display = 'block';
             document.getElementById('serverNameInput').value = '';
@@ -1009,69 +1852,6 @@
                     window.location.href = '/login';
                 } else {
                     showMessage('Erro ao excluir servidor', false, 'serverMessage');
-                }
-            });
-        }
-
-        function downloadServerZip() {
-            if (!currentServer) {
-                showMessage('Nenhum servidor selecionado', false, 'serverMessage');
-                return;
-            }
-            
-            // Confirm download
-            if (!confirm(`Tem certeza que deseja baixar o servidor ${currentServer} como arquivo ZIP? Isso pode levar algum tempo dependendo do tamanho do servidor.`)) {
-                return;
-            }
-            
-            // Show loading message
-            showMessage('Criando arquivo ZIP... Isso pode levar alguns minutos.', true, 'serverMessage');
-            
-            // Create and download ZIP
-            const link = document.createElement('a');
-            link.href = `/api/servers/${currentServer}/download-zip`;
-            link.download = `${currentServer}.zip`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            // Show success message
-            showMessage('Download iniciado! O arquivo ZIP será salvo em sua pasta de downloads.', true, 'serverMessage');
-        }
-
-        function createServerBackup() {
-            if (!currentServer) {
-                showMessage('Nenhum servidor selecionado', false, 'serverMessage');
-                return;
-            }
-            
-            // Confirm backup creation
-            if (!confirm(`Tem certeza que deseja criar um backup do servidor ${currentServer}?`)) {
-                return;
-            }
-            
-            // Show loading message
-            showMessage('Criando backup...', true, 'serverMessage');
-            
-            fetch(`/api/servers/${currentServer}/backup`, {
-                method: 'POST'
-            })
-            .then(response => {
-                if (response.status === 401) {
-                    window.location.href = '/login';
-                    return;
-                }
-                return response.json();
-            })
-            .then(data => {
-                showMessage(data.message || 'Backup criado com sucesso!', true, 'serverMessage');
-            })
-            .catch(error => {
-                console.error('Error creating backup:', error);
-                if (error instanceof SyntaxError) {
-                    window.location.href = '/login';
-                } else {
-                    showMessage('Erro ao criar backup', false, 'serverMessage');
                 }
             });
         }
@@ -2087,59 +2867,6 @@
             }
         }
         
-        function sendConsoleCommand() {
-            if (!currentServer) {
-                showMessage('Nenhum servidor selecionado', false, 'serverMessage');
-                return;
-            }
-            
-            const commandInput = document.getElementById('consoleCommandInput');
-            const command = commandInput.value.trim();
-            
-            if (!command) {
-                showMessage('Por favor, digite um comando', false);
-                return;
-            }
-            
-            fetch(`/api/servers/${currentServer}/command`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ command: command })
-            })
-            .then(response => {
-                if (response.status === 401) {
-                    window.location.href = '/login';
-                    return;
-                }
-                return response.json();
-            })
-            .then(data => {
-                // Add command to console display
-                const consoleDiv = document.getElementById('serverConsole');
-                const commandElement = document.createElement('p');
-                commandElement.className = 'console-line';
-                commandElement.innerHTML = `<span style="color: #4caf50;">&gt; ${command}</span>`;
-                consoleDiv.appendChild(commandElement);
-                
-                // Clear input and scroll to bottom
-                commandInput.value = '';
-                consoleDiv.scrollTop = consoleDiv.scrollHeight;
-                
-                // Show success message
-                showMessage('Comando enviado com sucesso!');
-            })
-            .catch(error => {
-                console.error('Error sending command:', error);
-                if (error instanceof SyntaxError) {
-                    window.location.href = '/login';
-                } else {
-                    showMessage('Erro ao enviar comando', false);
-                }
-            });
-        }
-        
         function loadServerConsole() {
             if (!isConsoleOpen || !currentServer) return;
             
@@ -2162,6 +2889,346 @@
                 .catch(error => {
                     console.error('Error loading server console:', error);
                 });
+        }
+        
+        // nHudVps menu functions
+        function openNhudvpsMenu() {
+            const nhudvpsModal = document.getElementById('nhudvpsModal');
+            nhudvpsModal.style.display = 'block';
+            
+            // Load nHudVps menu items
+            loadNhudvpsMenuItems();
+        }
+        
+        function closeNhudvpsMenu() {
+            const nhudvpsModal = document.getElementById('nhudvpsModal');
+            nhudvpsModal.style.display = 'none';
+            currentNhudvpsPath = '';
+            currentNhudvpsSpecialDir = '';
+        }
+        
+        function loadNhudvpsMenuItems() {
+            fetch('/api/nhudvps/menu')
+                .then(response => response.json())
+                .then(menuItems => {
+                    const fileList = document.getElementById('nhudvpsFileList');
+                    fileList.innerHTML = '';
+                    
+                    menuItems.forEach(item => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td><a href="#" onclick="enterNhudvpsDirectory('${item.name}', '${item.path}')">${item.name}</a></td>
+                            <td>${item.type}</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td class="file-actions">
+                                <button onclick="accessNhudvpsDirectory('${item.name}', '${item.path}')" style="background-color: #4CAF50;">Acessar</button>
+                            </td>
+                        `;
+                        fileList.appendChild(row);
+                    });
+                    
+                    // Clear breadcrumb
+                    document.getElementById('nhudvpsBreadcrumb').innerHTML = '<a href="#" onclick="loadNhudvpsMenuItems()">nHudVps</a>';
+                })
+                .catch(error => {
+                    console.error('Error loading nHudVps menu:', error);
+                    showMessage('Erro ao carregar o menu nHudVps', false, 'nhudvpsMessage');
+                });
+        }
+        
+        function enterNhudvpsDirectory(name, path) {
+            currentNhudvpsSpecialDir = name;
+            currentNhudvpsPath = path;
+            loadNhudvpsFileList();
+        }
+        
+        function accessNhudvpsDirectory(name, path) {
+            currentNhudvpsSpecialDir = name;
+            currentNhudvpsPath = path;
+            loadNhudvpsFileList();
+        }
+        
+        function updateNhudvpsBreadcrumb() {
+            const breadcrumb = document.getElementById('nhudvpsBreadcrumb');
+            breadcrumb.innerHTML = '';
+            
+            // Add home link
+            const homeLink = document.createElement('a');
+            homeLink.href = '#';
+            homeLink.textContent = 'nHudVps';
+            homeLink.onclick = function(e) {
+                e.preventDefault();
+                loadNhudvpsMenuItems();
+            };
+            breadcrumb.appendChild(homeLink);
+            
+            // Add current special directory
+            if (currentNhudvpsSpecialDir) {
+                const separator = document.createElement('span');
+                separator.textContent = ' > ';
+                breadcrumb.appendChild(separator);
+                
+                const dirLink = document.createElement('a');
+                dirLink.href = '#';
+                dirLink.textContent = currentNhudvpsSpecialDir;
+                dirLink.onclick = function(e) {
+                    e.preventDefault();
+                    loadNhudvpsFileList();
+                };
+                breadcrumb.appendChild(dirLink);
+            }
+            
+            // Add path segments
+            if (currentNhudvpsPath) {
+                const pathSegments = currentNhudvpsPath.split(/[\/\\]/).filter(segment => segment);
+                let pathSoFar = '';
+                
+                pathSegments.forEach((segment, index) => {
+                    const separator = document.createElement('span');
+                    separator.textContent = ' > ';
+                    breadcrumb.appendChild(separator);
+                    
+                    pathSoFar += (index > 0 ? '/' : '') + segment;
+                    
+                    const link = document.createElement('a');
+                    link.href = '#';
+                    link.textContent = segment;
+                    link.onclick = function(e) {
+                        e.preventDefault();
+                        // This would require a more complex implementation to navigate within the special directory
+                        // For now, we'll keep it simple
+                    };
+                    breadcrumb.appendChild(link);
+                });
+            }
+        }
+        
+        function loadNhudvpsFileList() {
+            if (!currentNhudvpsPath) {
+                loadNhudvpsMenuItems();
+                return;
+            }
+            
+            const url = `/api/files?path=${encodeURIComponent(currentNhudvpsPath)}`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    // Update breadcrumb
+                    updateNhudvpsBreadcrumb();
+                    
+                    const fileList = document.getElementById('nhudvpsFileList');
+                    fileList.innerHTML = '';
+                    
+                    if (data.files && data.files.length === 0) {
+                        fileList.innerHTML = '<tr><td colspan="5">Nenhum arquivo encontrado</td></tr>';
+                        return;
+                    }
+                    
+                    if (data.files) {
+                        data.files.forEach(file => {
+                            const row = document.createElement('tr');
+                            if (file.type === 'Pasta') {
+                                row.innerHTML = `
+                                    <td><a href="#" onclick="enterNhudvpsSubDirectory('${file.name}')">${file.name}</a></td>
+                                    <td>${file.type}</td>
+                                    <td>${file.size}</td>
+                                    <td>${file.modified}</td>
+                                    <td class="file-actions">
+                                        <button onclick="viewNhudvpsFolder('${file.name}')" style="background-color: #FF9800;">Visualizar</button>
+                                        <button onclick="deleteNhudvpsFile('${file.name}', 'Pasta')" style="background-color: #f44336;">Apagar</button>
+                                    </td>
+                                `;
+                            } else {
+                                row.innerHTML = `
+                                    <td>${file.name}</td>
+                                    <td>${file.type}</td>
+                                    <td>${file.size}</td>
+                                    <td>${file.modified}</td>
+                                    <td class="file-actions">
+                                        <button onclick="editNhudvpsFile('${file.name}')" class="copy-btn">Editar</button>
+                                        <button onclick="downloadNhudvpsFile('${file.name}')" style="background-color: #2196F3;">Baixar</button>
+                                        <button onclick="deleteNhudvpsFile('${file.name}', 'Arquivo')" style="background-color: #f44336;">Apagar</button>
+                                    </td>
+                                `;
+                            }
+                            fileList.appendChild(row);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading nHudVps file list:', error);
+                    showMessage('Erro ao carregar a lista de arquivos', false, 'nhudvpsMessage');
+                });
+        }
+        
+        function enterNhudvpsSubDirectory(dirname) {
+            // This would require a more complex implementation to navigate within the special directory
+            // For now, we'll keep it simple and just show a message
+            showMessage('Navegação em subdiretórios não implementada para nHudVps', false, 'nhudvpsMessage');
+        }
+        
+        function viewNhudvpsFolder(foldername) {
+            // This would require a more complex implementation to navigate within the special directory
+            // For now, we'll keep it simple and just show a message
+            showMessage('Visualização de pastas não implementada para nHudVps', false, 'nhudvpsMessage');
+        }
+        
+        function editNhudvpsFile(filename) {
+            const url = `/api/files/content?filePath=${encodeURIComponent(currentNhudvpsPath + '/' + filename)}`;
+                
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('File not found');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    document.getElementById('editingFilename').textContent = filename;
+                    document.getElementById('fileContent').value = data.content;
+                    document.getElementById('editModal').style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error loading file:', error);
+                    showMessage(`Erro ao carregar o arquivo ${filename}`, false, 'nhudvpsMessage');
+                });
+        }
+        
+        function downloadNhudvpsFile(filename) {
+            // Create a temporary link to trigger download
+            const url = `/api/download?filePath=${encodeURIComponent(currentNhudvpsPath + '/' + filename)}`;
+                
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        function deleteNhudvpsFile(filename, type) {
+            if (!confirm(`Tem certeza que deseja apagar ${type === 'Pasta' ? 'a pasta' : 'o arquivo'} ${filename}?`)) {
+                return;
+            }
+            
+            const url = `/api/files?filePath=${encodeURIComponent(currentNhudvpsPath + '/' + filename)}`;
+                
+            fetch(url, {
+                method: 'DELETE'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to delete file');
+                }
+                return response.json();
+            })
+            .then(data => {
+                showMessage(`${type === 'Pasta' ? 'Pasta' : 'Arquivo'} apagado com sucesso!`, true, 'nhudvpsMessage');
+                loadNhudvpsFileList(); // Refresh file list
+            })
+            .catch(error => {
+                console.error('Error deleting file:', error);
+                showMessage(`Erro ao apagar ${type === 'Pasta' ? 'a pasta' : 'o arquivo'} ${filename}`, false, 'nhudvpsMessage');
+            });
+        }
+        
+        function createNewNhudvpsFolder() {
+            const folderName = prompt('Nome da nova pasta:');
+            if (!folderName) return;
+            
+            const fullPath = currentNhudvpsPath ? `${currentNhudvpsPath}/${folderName}` : folderName;
+            
+            fetch('/api/directories', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    path: fullPath
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to create directory');
+                }
+                return response.json();
+            })
+            .then(data => {
+                showMessage('Pasta criada com sucesso!', true, 'nhudvpsMessage');
+                loadNhudvpsFileList(); // Refresh file list
+            })
+            .catch(error => {
+                console.error('Error creating directory:', error);
+                showMessage(`Erro ao criar a pasta "${folderName}"`, false, 'nhudvpsMessage');
+            });
+        }
+        
+        function toggleNhudvpsUploadForm() {
+            const form = document.getElementById('nhudvpsUploadForm');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+            // Reset form when showing
+            if (form.style.display === 'block') {
+                document.getElementById('nhudvpsFileInput').value = '';
+                document.getElementById('nhudvpsProgressBar').style.display = 'none';
+            }
+        }
+        
+        function handleNhudvpsFileUpload(e) {
+            e.preventDefault();
+            const fileInput = document.getElementById('nhudvpsFileInput');
+            const files = fileInput.files;
+            
+            if (files.length === 0) {
+                showMessage('Por favor, selecione pelo menos um arquivo para enviar.', false, 'nhudvpsMessage');
+                return;
+            }
+            
+            // Show progress bar
+            const progressBar = document.getElementById('nhudvpsProgressBar');
+            const progressBarFill = document.getElementById('nhudvpsProgressBarFill');
+            progressBar.style.display = 'block';
+            progressBarFill.style.width = '0%';
+            
+            // Create FormData object
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('file', files[i]);
+            }
+            formData.append('path', currentNhudvpsPath);
+            
+            // Create XMLHttpRequest for progress tracking
+            const xhr = new XMLHttpRequest();
+            
+            // Update progress bar
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressBarFill.style.width = percentComplete + '%';
+                }
+            });
+            
+            // Handle completion
+            xhr.addEventListener('load', function() {
+                if (xhr.status === 200) {
+                    const response = JSON.parse(xhr.responseText);
+                    showMessage(response.message || 'Arquivo(s) enviado(s) com sucesso!', true, 'nhudvpsMessage');
+                    toggleNhudvpsUploadForm(); // Hide form
+                    loadNhudvpsFileList(); // Refresh file list
+                } else {
+                    showMessage('Erro ao enviar arquivo(s)', false, 'nhudvpsMessage');
+                }
+            });
+            
+            // Handle errors
+            xhr.addEventListener('error', function() {
+                showMessage('Erro ao enviar arquivo(s)', false, 'nhudvpsMessage');
+            });
+            
+            // Send request
+            xhr.open('POST', '/api/upload');
+            xhr.send(formData);
         }
     </script>
 </body>
