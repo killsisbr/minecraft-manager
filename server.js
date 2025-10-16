@@ -23,7 +23,12 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 100 * 1024 * 1024 // 100MB limit (aumente conforme necessário)
+  }
+});
 
 // Promisify file system operations
 const readdir = promisify(fs.readdir);
@@ -36,8 +41,8 @@ const rename = promisify(fs.rename);
 const copyFile = promisify(fs.copyFile);
 
 // Middleware
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+app.use(express.json({ limit: '100mb' }));
 app.use(express.static('public'));
 app.use(session({
   secret: 'minecraft-server-manager',
