@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+﻿﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -659,6 +659,7 @@
                 <button id="pasteBtn" class="paste-btn" style="display: none;">Colar</button>
                 <button id="moveSelectedBtn" class="move-btn" style="display: none;">Mover</button>
                 <button id="deleteSelectedBtn" class="stop-btn" style="display: none;">Apagar Selecionados</button>
+                <button id="compressAndDownloadBtn" class="info-btn" style="display: none;">Compactar e Baixar</button>
                 <input type="text" id="destinationPath" placeholder="Caminho de destino" style="display: none; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
                 <button id="confirmOperationBtn" class="move-btn" style="display: none;">Confirmar</button>
                 <button id="cancelOperationBtn" style="display: none;">Cancelar</button>
@@ -1396,15 +1397,18 @@
             const copyBtn = document.getElementById('copyBtn');
             const moveSelectedBtn = document.getElementById('moveSelectedBtn');
             const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+            const compressAndDownloadBtn = document.getElementById('compressAndDownloadBtn');
             
             if (selectedCheckboxes.length > 0) {
                 copyBtn.style.display = 'inline-block';
                 moveSelectedBtn.style.display = 'inline-block';
                 deleteSelectedBtn.style.display = 'inline-block';
+                compressAndDownloadBtn.style.display = 'inline-block';
             } else {
                 copyBtn.style.display = 'none';
                 moveSelectedBtn.style.display = 'none';
                 deleteSelectedBtn.style.display = 'none';
+                compressAndDownloadBtn.style.display = 'none';
                 hideOperationInput();
             }
         }
@@ -1585,6 +1589,89 @@
                         loadFileList();
                     }
                 });
+            });
+        }
+
+        // Nova função para compactar e baixar pastas selecionadas
+        function compressAndDownloadSelected() {
+            const selectedCheckboxes = document.querySelectorAll('.file-checkbox:checked');
+            const items = Array.from(selectedCheckboxes).map(checkbox => {
+                const filename = checkbox.dataset.filename;
+                return {
+                    filename: filename,
+                    type: checkbox.dataset.type
+                };
+            });
+            
+            if (items.length === 0) {
+                showMessage('Nenhum item selecionado.', false);
+                return;
+            }
+            
+            // Solicitar nome para o arquivo ZIP
+            const downloadName = prompt('Nome do arquivo ZIP (sem extensão):', 'arquivos-selecionados');
+            if (!downloadName) {
+                return;
+            }
+            
+            // Preparar os caminhos completos para envio ao servidor
+            const paths = items.map(item => {
+                // Ajustar o caminho para corresponder à estrutura do servidor
+                return currentPath ? 
+                    `./servers/${currentServer}/${currentPath}/${item.filename}` : 
+                    `./servers/${currentServer}/${item.filename}`;
+            });
+            
+            // Enviar requisição para compactar e baixar
+            fetch('/api/compress-and-download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    paths: paths,
+                    downloadName: downloadName
+                })
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Erro ao compactar arquivos');
+                    });
+                }
+                
+                // Obter o nome do arquivo do cabeçalho de conteúdo
+                const contentDisposition = response.headers.get('content-disposition');
+                let filename = downloadName + '.zip';
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/);
+                    if (filenameMatch && filenameMatch[1]) {
+                        filename = filenameMatch[1];
+                    }
+                }
+                
+                // Criar um blob e fazer o download
+                return response.blob().then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    showMessage(`${items.length} item(s) compactado(s) e pronto(s) para download!`);
+                });
+            })
+            .catch(error => {
+                console.error('Error compressing and downloading files:', error);
+                showMessage(`Erro ao compactar e baixar arquivos: ${error.message}`, false);
             });
         }
         
@@ -2077,6 +2164,7 @@
             document.getElementById('pasteBtn').addEventListener('click', pasteFiles);
             document.getElementById('moveSelectedBtn').addEventListener('click', moveSelectedFiles);
             document.getElementById('deleteSelectedBtn').addEventListener('click', deleteSelectedFiles);
+            document.getElementById('compressAndDownloadBtn').addEventListener('click', compressAndDownloadSelected);
             document.getElementById('cancelOperationBtn').addEventListener('click', cancelOperation);
             
             // Event listeners for operation dialog

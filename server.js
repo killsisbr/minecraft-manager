@@ -1455,6 +1455,85 @@ app.get('/api/servers/:serverName/download-zip', isAuthenticated, async (req, re
   }
 });
 
+// Nova funcionalidade: Compactar pastas selecionadas para download
+app.post('/api/compress-and-download', isAuthenticated, async (req, res) => {
+  try {
+    const { paths, downloadName } = req.body;
+    
+    if (!paths || !Array.isArray(paths) || paths.length === 0) {
+      return res.status(400).json({ error: 'Nenhum caminho especificado para compactar' });
+    }
+    
+    if (!downloadName) {
+      return res.status(400).json({ error: 'Nome do arquivo de download não especificado' });
+    }
+    
+    // Generate temporary ZIP filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const zipFilename = `${downloadName}-${timestamp}.zip`;
+    const tempZipPath = path.join(__dirname, zipFilename);
+    
+    // Create ZIP archive
+    const zip = new AdmZip();
+    
+    // Add each selected path to the ZIP
+    for (const itemPath of paths) {
+      // Security check: ensure the path is accessible
+      // Convert relative paths to absolute paths
+      const absolutePath = path.resolve(__dirname, itemPath);
+      
+      if (!fs.existsSync(absolutePath)) {
+        console.warn(`Path not found: ${absolutePath}`);
+        continue;
+      }
+      
+      const stats = await stat(absolutePath);
+      if (stats.isDirectory()) {
+        // Add directory to ZIP with its name as the root folder
+        const folderName = path.basename(absolutePath);
+        zip.addLocalFolder(absolutePath, folderName);
+      } else {
+        // Add file to ZIP
+        const fileName = path.basename(absolutePath);
+        zip.addLocalFile(absolutePath, "", fileName);
+      }
+    }
+    
+    // Check if ZIP has any entries
+    if (zip.getEntries().length === 0) {
+      return res.status(400).json({ error: 'Nenhum arquivo ou pasta válido encontrado para compactar' });
+    }
+    
+    // Write ZIP file
+    zip.writeZip(tempZipPath);
+    
+    // Send the ZIP file for download
+    res.download(tempZipPath, zipFilename, (err) => {
+      if (err) {
+        console.error('Error downloading ZIP file:', err);
+        // Try to send error response if headers haven't been sent
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to download compressed file' });
+        }
+      }
+      
+      // Clean up temporary ZIP file after download
+      setTimeout(() => {
+        if (fs.existsSync(tempZipPath)) {
+          fs.unlink(tempZipPath, (unlinkErr) => {
+            if (unlinkErr) {
+              console.error('Error deleting temporary ZIP file:', unlinkErr);
+            }
+          });
+        }
+      }, 1000);
+    });
+  } catch (error) {
+    console.error('Error creating compressed download:', error);
+    res.status(500).json({ error: 'Failed to create compressed download' });
+  }
+});
+
 // Send command to Minecraft server
 app.post('/api/servers/:serverName/command', isAuthenticated, (req, res) => {
   const { serverName } = req.params;
